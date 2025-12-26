@@ -114,9 +114,9 @@ exports.findNearestSupermarket = async (req, res) => {
     const supermarkets = await Supermarket.find({
       $or: [
         { latitude: { $exists: true }, longitude: { $exists: true } },
-        { locations: { $exists: true, $ne: [], $size: { $gt: 0 } } }
+        { 'locations.0': { $exists: true } } // التحقق من وجود موقع واحد على الأقل
       ]
-    });
+    }).lean(); // استخدام lean() للحصول على plain objects بدلاً من Mongoose documents
     
     if (supermarkets.length === 0) {
       return res.json({ supermarket: null, distance: null, location: null });
@@ -129,36 +129,64 @@ exports.findNearestSupermarket = async (req, res) => {
       let minDistance = Infinity;
       let nearestLocation = null;
       
+      console.log(`🔍 Processing supermarket: ${supermarket.name}, locations count: ${supermarket.locations?.length || 0}`);
+      
       // إذا كان هناك مواقع متعددة، نستخدم الأقرب
       if (supermarket.locations && supermarket.locations.length > 0) {
-        for (const location of supermarket.locations) {
-          // التحقق من وجود latitude و longitude في الموقع
-          if (location.latitude != null && location.longitude != null) {
+        for (let i = 0; i < supermarket.locations.length; i++) {
+          const location = supermarket.locations[i];
+          console.log(`📍 Location ${i}:`, {
+            name: location.name,
+            latitude: location.latitude,
+            longitude: location.longitude,
+            latType: typeof location.latitude,
+            lngType: typeof location.longitude
+          });
+          
+          // التحقق من وجود latitude و longitude في الموقع وتحويلها إلى أرقام
+          const locLat = location.latitude != null ? parseFloat(location.latitude) : null;
+          const locLng = location.longitude != null ? parseFloat(location.longitude) : null;
+          
+          console.log(`   Parsed: lat=${locLat}, lng=${locLng}, isNaN: ${isNaN(locLat) || isNaN(locLng)}`);
+          
+          if (locLat != null && locLng != null && 
+              !isNaN(locLat) && !isNaN(locLng) &&
+              isFinite(locLat) && isFinite(locLng)) {
             const distance = calculateDistance(
               lat,
               lng,
-              location.latitude,
-              location.longitude
+              locLat,
+              locLng
             );
+            console.log(`   Distance calculated: ${distance} km`);
+            
             // التحقق من أن المسافة صحيحة وليست NaN
             if (distance != null && !isNaN(distance) && isFinite(distance) && distance < minDistance) {
               minDistance = distance;
               nearestLocation = location;
+              console.log(`   ✅ New nearest location found: ${location.name || 'unnamed'}, distance: ${distance} km`);
             }
+          } else {
+            console.log(`   ❌ Invalid location coordinates`);
           }
         }
       } 
       // استخدام الموقع القديم (latitude, longitude) للتوافق مع الكود القديم
       else if (supermarket.latitude != null && supermarket.longitude != null) {
-        const distance = calculateDistance(
-          lat,
-          lng,
-          supermarket.latitude,
-          supermarket.longitude
-        );
-        // التحقق من أن المسافة صحيحة
-        if (distance != null && !isNaN(distance) && isFinite(distance)) {
-          minDistance = distance;
+        const supLat = parseFloat(supermarket.latitude);
+        const supLng = parseFloat(supermarket.longitude);
+        
+        if (!isNaN(supLat) && !isNaN(supLng) && isFinite(supLat) && isFinite(supLng)) {
+          const distance = calculateDistance(
+            lat,
+            lng,
+            supLat,
+            supLng
+          );
+          // التحقق من أن المسافة صحيحة
+          if (distance != null && !isNaN(distance) && isFinite(distance)) {
+            minDistance = distance;
+          }
         }
       }
       
@@ -177,9 +205,19 @@ exports.findNearestSupermarket = async (req, res) => {
     }
     
     // Sort by distance
-    supermarketsWithDistance.sort((a, b) => a.distance - b.distance);
+    supermarketsWithDistance.sort((a, b) => {
+      // التحقق من أن المسافات صحيحة قبل المقارنة
+      const distA = isNaN(a.distance) || !isFinite(a.distance) ? Infinity : a.distance;
+      const distB = isNaN(b.distance) || !isFinite(b.distance) ? Infinity : b.distance;
+      return distA - distB;
+    });
     
     const nearest = supermarketsWithDistance[0];
+    
+    // التحقق من أن النتيجة صحيحة
+    if (!nearest || isNaN(nearest.distance) || !isFinite(nearest.distance)) {
+      return res.json({ supermarket: null, distance: null, location: null });
+    }
     
     res.json({
       supermarket: nearest.supermarket,
@@ -210,10 +248,18 @@ exports.addLocation = async (req, res) => {
       supermarket.locations = [];
     }
     
+    const locLat = parseFloat(latitude);
+    const locLng = parseFloat(longitude);
+    
+    // التحقق من صحة الإحداثيات
+    if (isNaN(locLat) || isNaN(locLng) || !isFinite(locLat) || !isFinite(locLng)) {
+      return res.status(400).json({ error: 'Invalid latitude or longitude values' });
+    }
+    
     supermarket.locations.push({
       name: name || null,
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
+      latitude: locLat,
+      longitude: locLng,
       address: address || null,
       createdAt: new Date(),
     });
@@ -242,8 +288,20 @@ exports.updateLocation = async (req, res) => {
     }
     
     if (name !== undefined) location.name = name;
-    if (latitude !== undefined) location.latitude = parseFloat(latitude);
-    if (longitude !== undefined) location.longitude = parseFloat(longitude);
+    if (latitude !== undefined) {
+      const locLat = parseFloat(latitude);
+      if (isNaN(locLat) || !isFinite(locLat)) {
+        return res.status(400).json({ error: 'Invalid latitude value' });
+      }
+      location.latitude = locLat;
+    }
+    if (longitude !== undefined) {
+      const locLng = parseFloat(longitude);
+      if (isNaN(locLng) || !isFinite(locLng)) {
+        return res.status(400).json({ error: 'Invalid longitude value' });
+      }
+      location.longitude = locLng;
+    }
     if (address !== undefined) location.address = address;
     
     await supermarket.save();
