@@ -74,6 +74,7 @@ async function sendNotification(fcmToken, title, body, data = {}) {
 
 /**
  * Send notification to multiple devices
+ * Uses individual sendNotification calls instead of sendMulticast to avoid Firebase API issues
  * @param {string[]} fcmTokens - Array of FCM tokens
  * @param {string} title - Notification title
  * @param {string} body - Notification body
@@ -102,46 +103,52 @@ async function sendMulticastNotification(fcmTokens, title, body, data = {}) {
     return null;
   }
 
-  try {
-    // Convert all data values to strings (FCM requirement)
-    const stringifiedData = {};
-    for (const [key, value] of Object.entries(data)) {
-      stringifiedData[key] = String(value);
-    }
-    
-    const message = {
-      notification: {
-        title,
-        body,
-      },
-      data: {
-        ...stringifiedData,
-        timestamp: new Date().toISOString(),
-      },
-      tokens: validTokens,
-    };
+  console.log(`📤 Sending notifications to ${validTokens.length} devices (using individual sends)`);
+  console.log(`📝 Title: ${title}, Body: ${body}`);
 
-    console.log(`📤 Sending notifications to ${validTokens.length} devices`);
-    console.log(`📝 Title: ${title}, Body: ${body}`);
-    
-    const response = await admin.messaging().sendMulticast(message);
-    console.log(`✅ Notifications sent: ${response.successCount}/${validTokens.length}`);
-    
-    if (response.failureCount > 0) {
-      console.warn(`⚠️ ${response.failureCount} notifications failed`);
-      response.responses.forEach((resp, idx) => {
-        if (!resp.success) {
-          console.error(`❌ Failed to send to token ${validTokens[idx].substring(0, 20)}...:`, resp.error?.code, resp.error?.message);
-        }
-      });
+  // Send notifications individually to avoid Firebase multicast API issues
+  let successCount = 0;
+  let failureCount = 0;
+  const errors = [];
+
+  // Send notifications in parallel but handle errors individually
+  const sendPromises = validTokens.map(async (token) => {
+    try {
+      const result = await sendNotification(token, title, body, data);
+      return { success: result !== null, token };
+    } catch (error) {
+      errors.push({ token: token.substring(0, 20) + '...', error: error.message });
+      console.error(`❌ Failed to send to token ${token.substring(0, 20)}...:`, error.code || 'unknown', error.message);
+      return { success: false, token, error };
     }
-    return response;
-  } catch (error) {
-    console.error('❌ Error sending multicast notification:', error);
-    console.error('❌ Error code:', error.code);
-    console.error('❌ Error message:', error.message);
-    throw error;
+  });
+
+  // Wait for all notifications to be sent
+  const results = await Promise.allSettled(sendPromises);
+
+  // Count successes and failures
+  results.forEach((result) => {
+    if (result.status === 'fulfilled' && result.value.success) {
+      successCount++;
+    } else {
+      failureCount++;
+    }
+  });
+
+  console.log(`✅ Notifications sent: ${successCount}/${validTokens.length}`);
+  
+  if (failureCount > 0) {
+    console.warn(`⚠️ ${failureCount} notifications failed`);
   }
+
+  return {
+    successCount,
+    failureCount,
+    responses: results.map((result, idx) => ({
+      success: result.status === 'fulfilled' && result.value.success !== false,
+      token: validTokens[idx],
+    })),
+  };
 }
 
 module.exports = {
