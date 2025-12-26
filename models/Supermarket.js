@@ -28,6 +28,27 @@ const supermarketSchema = new mongoose.Schema({
   longitude: {
     type: Number,
   },
+  // مواقع متعددة للسوبر ماركت (للمستقبل - سوبر ماركت المنقذ)
+  locations: [{
+    name: {
+      type: String,
+    },
+    latitude: {
+      type: Number,
+      required: true,
+    },
+    longitude: {
+      type: Number,
+      required: true,
+    },
+    address: {
+      type: String,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+  }],
   createdAt: {
     type: Date,
     default: Date.now,
