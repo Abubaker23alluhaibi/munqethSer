@@ -327,6 +327,13 @@ exports.createOrder = async (req, res) => {
           }
         );
         console.log('✅ Sent order created notification to customer');
+      } else {
+        const customer = await findUserByPhone(order.customerPhone);
+        if (customer) {
+          console.warn(`⚠️ Customer found but no FCM token for phone: ${order.customerPhone} - User needs to login again to register FCM token`);
+        } else {
+          console.warn(`⚠️ Customer not found for phone: ${order.customerPhone}`);
+        }
       }
     } catch (notifError) {
       console.error('Error sending notification to customer:', notifError);
@@ -515,7 +522,11 @@ async function sendStatusUpdateNotifications(oldOrder, newOrder, newStatus) {
           );
           console.log(`✅ Sent status update notification to customer: ${newStatus} (type: ${messageConfig.notificationType})`);
         } else {
-          console.warn(`⚠️ Customer not found or no FCM token for phone: ${newOrder.customerPhone}`);
+          if (customer) {
+            console.warn(`⚠️ Customer found but no FCM token for phone: ${newOrder.customerPhone} - User needs to login again to register FCM token`);
+          } else {
+            console.warn(`⚠️ Customer not found for phone: ${newOrder.customerPhone}`);
+          }
         }
       } catch (error) {
         console.error('Error sending notification to customer:', error);
@@ -689,7 +700,11 @@ exports.acceptOrderByDriver = async (req, res) => {
         );
         console.log('✅ Sent order accepted notification to customer');
       } else {
-        console.warn(`⚠️ Customer not found or no FCM token for phone: ${order.customerPhone}`);
+        if (customer) {
+          console.warn(`⚠️ Customer found but no FCM token for phone: ${order.customerPhone} - User needs to login again to register FCM token`);
+        } else {
+          console.warn(`⚠️ Customer not found for phone: ${order.customerPhone}`);
+        }
       }
     } catch (notifError) {
       console.error('Error sending notification to customer:', notifError);
@@ -788,7 +803,11 @@ exports.checkAndExpireOrders = async (io) => {
           
           console.log(`✅ Sent expiration notification to customer for order ${currentOrder._id}`);
         } else {
-          console.warn(`⚠️ Customer not found or no FCM token for phone: ${currentOrder.customerPhone}`);
+          if (customer) {
+            console.warn(`⚠️ Customer found but no FCM token for phone: ${currentOrder.customerPhone} - User needs to login again to register FCM token`);
+          } else {
+            console.warn(`⚠️ Customer not found for phone: ${currentOrder.customerPhone}`);
+          }
         }
         
         // Emit socket event
