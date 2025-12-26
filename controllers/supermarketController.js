@@ -106,6 +106,11 @@ exports.findNearestSupermarket = async (req, res) => {
     const lat = parseFloat(latitude);
     const lng = parseFloat(longitude);
     
+    // التحقق من صحة الإحداثيات
+    if (isNaN(lat) || isNaN(lng)) {
+      return res.status(400).json({ error: 'Invalid latitude or longitude values' });
+    }
+    
     const supermarkets = await Supermarket.find({
       $or: [
         { latitude: { $exists: true }, longitude: { $exists: true } },
@@ -127,29 +132,38 @@ exports.findNearestSupermarket = async (req, res) => {
       // إذا كان هناك مواقع متعددة، نستخدم الأقرب
       if (supermarket.locations && supermarket.locations.length > 0) {
         for (const location of supermarket.locations) {
-          const distance = calculateDistance(
-            lat,
-            lng,
-            location.latitude,
-            location.longitude
-          );
-          if (distance !== null && distance < minDistance) {
-            minDistance = distance;
-            nearestLocation = location;
+          // التحقق من وجود latitude و longitude في الموقع
+          if (location.latitude != null && location.longitude != null) {
+            const distance = calculateDistance(
+              lat,
+              lng,
+              location.latitude,
+              location.longitude
+            );
+            // التحقق من أن المسافة صحيحة وليست NaN
+            if (distance != null && !isNaN(distance) && isFinite(distance) && distance < minDistance) {
+              minDistance = distance;
+              nearestLocation = location;
+            }
           }
         }
       } 
       // استخدام الموقع القديم (latitude, longitude) للتوافق مع الكود القديم
-      else if (supermarket.latitude && supermarket.longitude) {
-        minDistance = calculateDistance(
+      else if (supermarket.latitude != null && supermarket.longitude != null) {
+        const distance = calculateDistance(
           lat,
           lng,
           supermarket.latitude,
           supermarket.longitude
-        ) || Infinity;
+        );
+        // التحقق من أن المسافة صحيحة
+        if (distance != null && !isNaN(distance) && isFinite(distance)) {
+          minDistance = distance;
+        }
       }
       
-      if (minDistance !== Infinity) {
+      // إضافة السوبر ماركت فقط إذا كانت المسافة صحيحة
+      if (minDistance !== Infinity && !isNaN(minDistance) && isFinite(minDistance)) {
         supermarketsWithDistance.push({
           supermarket,
           distance: minDistance,
