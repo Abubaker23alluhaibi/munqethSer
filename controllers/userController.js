@@ -177,17 +177,24 @@ exports.updateFcmTokenByPhone = async (req, res) => {
     const { phone } = req.params;
     const { fcmToken } = req.body;
     
+    logger.debug(`📱 Received FCM token update request for phone: ${phone}`);
+    logger.debug(`   FCM token: ${fcmToken ? fcmToken.substring(0, 20) + '...' : 'MISSING'}`);
+    
     if (!fcmToken) {
+      logger.warn(`❌ FCM token is missing in request body for phone: ${phone}`);
       return res.status(400).json({ error: 'FCM token is required' });
     }
     
     // Use findUserByPhone helper which handles both old and new phone formats
+    logger.debug(`🔍 Searching for user with phone: ${phone}`);
     const user = await exports.findUserByPhone(phone);
     
     if (!user) {
-      logger.warn(`User not found for phone: ${phone} when updating FCM token`);
+      logger.warn(`❌ User not found for phone: ${phone} when updating FCM token`);
       return res.status(404).json({ error: 'User not found' });
     }
+    
+    logger.debug(`✅ User found: ${user.name} (${user.phone})`);
     
     // Update FCM token
     const oldToken = user.fcmToken;
@@ -234,6 +241,35 @@ exports.updateFcmToken = async (req, res) => {
     res.json({ message: 'FCM token updated successfully', user });
   } catch (error) {
     logger.error('Error updating user FCM token:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Check FCM token status for a user by phone
+exports.checkFcmTokenStatus = async (req, res) => {
+  try {
+    const { phone } = req.params;
+    logger.debug(`🔍 Checking FCM token status for phone: ${phone}`);
+    
+    const user = await exports.findUserByPhone(phone);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const hasToken = !!(user.fcmToken && user.fcmToken.trim().length > 0);
+    
+    logger.debug(`📱 FCM token status for ${user.name} (${user.phone}): ${hasToken ? 'EXISTS' : 'MISSING'}`);
+    
+    res.json({
+      phone: user.phone,
+      name: user.name,
+      hasFcmToken: hasToken,
+      fcmTokenPreview: user.fcmToken ? user.fcmToken.substring(0, 20) + '...' : null,
+      updatedAt: user.updatedAt,
+    });
+  } catch (error) {
+    logger.error('Error checking FCM token status:', error);
     res.status(500).json({ error: error.message });
   }
 };

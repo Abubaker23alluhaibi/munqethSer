@@ -684,16 +684,23 @@ exports.updateFcmTokenByDriverId = async (req, res) => {
     const { driverId } = req.params;
     const { fcmToken } = req.body;
     
+    logger.debug(`📱 Received FCM token update request for driverId: ${driverId}`);
+    logger.debug(`   FCM token: ${fcmToken ? fcmToken.substring(0, 20) + '...' : 'MISSING'}`);
+    
     if (!fcmToken) {
+      logger.warn(`❌ FCM token is missing in request body for driverId: ${driverId}`);
       return res.status(400).json({ error: 'FCM token is required' });
     }
     
+    logger.debug(`🔍 Searching for driver with driverId: ${driverId.toUpperCase()}`);
     const driver = await Driver.findOne({ driverId: driverId.toUpperCase() });
     
     if (!driver) {
-      logger.warn(`Driver not found for driverId: ${driverId} when updating FCM token`);
+      logger.warn(`❌ Driver not found for driverId: ${driverId} when updating FCM token`);
       return res.status(404).json({ error: 'Driver not found' });
     }
+    
+    logger.debug(`✅ Driver found: ${driver.name} (${driver.driverId})`);
     
     const oldToken = driver.fcmToken;
     driver.fcmToken = fcmToken;
@@ -711,6 +718,35 @@ exports.updateFcmTokenByDriverId = async (req, res) => {
     res.json({ message: 'FCM token updated successfully', driver });
   } catch (error) {
     logger.error('Error updating driver FCM token:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Check FCM token status for a driver by driverId
+exports.checkFcmTokenStatus = async (req, res) => {
+  try {
+    const { driverId } = req.params;
+    logger.debug(`🔍 Checking FCM token status for driverId: ${driverId}`);
+    
+    const driver = await Driver.findOne({ driverId: driverId.toUpperCase() });
+    
+    if (!driver) {
+      return res.status(404).json({ error: 'Driver not found' });
+    }
+    
+    const hasToken = !!(driver.fcmToken && driver.fcmToken.trim().length > 0);
+    
+    logger.debug(`📱 FCM token status for ${driver.name} (${driver.driverId}): ${hasToken ? 'EXISTS' : 'MISSING'}`);
+    
+    res.json({
+      driverId: driver.driverId,
+      name: driver.name,
+      hasFcmToken: hasToken,
+      fcmTokenPreview: driver.fcmToken ? driver.fcmToken.substring(0, 20) + '...' : null,
+      updatedAt: driver.updatedAt,
+    });
+  } catch (error) {
+    logger.error('Error checking FCM token status:', error);
     res.status(500).json({ error: error.message });
   }
 };

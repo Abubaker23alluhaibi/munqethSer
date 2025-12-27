@@ -12,6 +12,7 @@ router.delete('/:id', driverController.deleteDriver);
 router.put('/:id/location', driverController.updateDriverLocation);
 router.put('/:id/fcm-token', driverController.updateFcmToken);
 router.put('/driverId/:driverId/fcm-token', driverController.updateFcmTokenByDriverId);
+router.get('/driverId/:driverId/fcm-token/status', driverController.checkFcmTokenStatus);
 // Note: /me/location endpoint requires authentication middleware to get driverId from token
 
 module.exports = router;

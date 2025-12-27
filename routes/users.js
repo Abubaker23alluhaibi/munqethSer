@@ -9,6 +9,7 @@ router.post('/', userController.addUser);
 router.put('/:id', userController.updateUser);
 router.put('/:id/fcm-token', userController.updateFcmToken);
 router.put('/phone/:phone/fcm-token', userController.updateFcmTokenByPhone);
+router.get('/phone/:phone/fcm-token/status', userController.checkFcmTokenStatus);
 router.delete('/:id', userController.deleteUser);
 
 module.exports = router;
