@@ -234,9 +234,16 @@ exports.createOrder = async (req, res) => {
         nearestDrivers = driversWithDistance.map(item => item.driver);
         driverFcmTokens = driversWithDistance
           .map(item => item.driver.fcmToken)
-          .filter(token => token);
+          .filter(token => token && token.trim().length > 0);
         
         logger.debug(`📍 Found ${driversWithDistance.length} nearest drivers for ${order.type} order`);
+        logger.debug(`📱 Drivers with FCM tokens: ${driverFcmTokens.length}/${driversWithDistance.length}`);
+        
+        if (driversWithDistance.length > 0 && driverFcmTokens.length === 0) {
+          logger.warn(`⚠️ Found ${driversWithDistance.length} drivers but none have FCM tokens - drivers need to login again to register FCM tokens`);
+          const driverIds = nearestDrivers.map(d => d.driverId || d._id).filter(Boolean);
+          logger.debug(`   Driver IDs: ${driverIds.join(', ')}`);
+        }
         
         // Emit socket event to each nearest driver individually
         const io = req.app.get('io');
@@ -267,9 +274,16 @@ exports.createOrder = async (req, res) => {
       
       driverFcmTokens = availableDrivers
         .map(d => d.fcmToken)
-        .filter(token => token);
+        .filter(token => token && token.trim().length > 0);
       
       logger.debug(`📢 Found ${availableDrivers.length} available drivers for ${order.type} order`);
+      logger.debug(`📱 Drivers with FCM tokens: ${driverFcmTokens.length}/${availableDrivers.length}`);
+      
+      if (availableDrivers.length > 0 && driverFcmTokens.length === 0) {
+        logger.warn(`⚠️ Found ${availableDrivers.length} drivers but none have FCM tokens - drivers need to login again to register FCM tokens`);
+        const driverIds = availableDrivers.map(d => d.driverId || d._id).filter(Boolean).slice(0, 5);
+        logger.debug(`   Sample Driver IDs: ${driverIds.join(', ')}${availableDrivers.length > 5 ? '...' : ''}`);
+      }
       
       // Emit socket event for other services too
       const io = req.app.get('io');
@@ -317,7 +331,11 @@ exports.createOrder = async (req, res) => {
         logger.error('Error sending notification to drivers:', notifError);
       }
     } else {
-      logger.warn(`⚠️ No drivers found to notify for ${order.type} order`);
+      if (nearestDrivers.length > 0 || (order.type !== 'taxi' && order.type !== 'delivery')) {
+        logger.warn(`⚠️ Found drivers for ${order.type} order but none have FCM tokens - drivers need to login again to register FCM tokens`);
+      } else {
+        logger.warn(`⚠️ No drivers found to notify for ${order.type} order (no available drivers found)`);
+      }
     }
     
     // Send notification to customer (order created successfully)
