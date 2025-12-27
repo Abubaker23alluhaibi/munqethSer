@@ -688,17 +688,26 @@ exports.updateFcmTokenByDriverId = async (req, res) => {
       return res.status(400).json({ error: 'FCM token is required' });
     }
     
-    const driver = await Driver.findOneAndUpdate(
-      { driverId: driverId.toUpperCase() },
-      { fcmToken, updatedAt: new Date() },
-      { new: true }
-    );
+    const driver = await Driver.findOne({ driverId: driverId.toUpperCase() });
     
     if (!driver) {
+      logger.warn(`Driver not found for driverId: ${driverId} when updating FCM token`);
       return res.status(404).json({ error: 'Driver not found' });
     }
     
-    logger.debug(`✅ Updated FCM token for driver ${driver.name} (${driver.driverId})`);
+    const oldToken = driver.fcmToken;
+    driver.fcmToken = fcmToken;
+    driver.updatedAt = new Date();
+    await driver.save();
+    
+    if (oldToken !== fcmToken) {
+      logger.success(`✅ Updated FCM token for driver ${driver.name} (${driver.driverId})`);
+      logger.debug(`   Old token: ${oldToken ? oldToken.substring(0, 20) + '...' : 'none'}`);
+      logger.debug(`   New token: ${fcmToken.substring(0, 20)}...`);
+    } else {
+      logger.debug(`FCM token unchanged for driver ${driver.name} (${driver.driverId})`);
+    }
+    
     res.json({ message: 'FCM token updated successfully', driver });
   } catch (error) {
     logger.error('Error updating driver FCM token:', error);

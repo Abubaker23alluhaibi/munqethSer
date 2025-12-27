@@ -181,18 +181,28 @@ exports.updateFcmTokenByPhone = async (req, res) => {
       return res.status(400).json({ error: 'FCM token is required' });
     }
     
-    const normalizedPhone = normalizeIraqiPhone(phone);
-    const user = await User.findOneAndUpdate(
-      { phone: normalizedPhone },
-      { fcmToken, updatedAt: new Date() },
-      { new: true, upsert: false } // Don't create if doesn't exist
-    );
+    // Use findUserByPhone helper which handles both old and new phone formats
+    const user = await exports.findUserByPhone(phone);
     
     if (!user) {
+      logger.warn(`User not found for phone: ${phone} when updating FCM token`);
       return res.status(404).json({ error: 'User not found' });
     }
     
-    logger.success(`✅ Updated FCM token for user ${user.name} (${user.phone})`);
+    // Update FCM token
+    const oldToken = user.fcmToken;
+    user.fcmToken = fcmToken;
+    user.updatedAt = new Date();
+    await user.save();
+    
+    if (oldToken !== fcmToken) {
+      logger.success(`✅ Updated FCM token for user ${user.name} (${user.phone})`);
+      logger.debug(`   Old token: ${oldToken ? oldToken.substring(0, 20) + '...' : 'none'}`);
+      logger.debug(`   New token: ${fcmToken.substring(0, 20)}...`);
+    } else {
+      logger.debug(`FCM token unchanged for user ${user.name} (${user.phone})`);
+    }
+    
     res.json({ message: 'FCM token updated successfully', user });
   } catch (error) {
     logger.error('Error updating user FCM token:', error);

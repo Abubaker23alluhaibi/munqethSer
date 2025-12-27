@@ -527,7 +527,7 @@ async function sendStatusUpdateNotifications(oldOrder, newOrder, newStatus) {
     // Send notification to customer
     if (newOrder.customerPhone) {
       try {
-        const customer = await User.findOne({ phone: newOrder.customerPhone });
+        const customer = await findUserByPhone(newOrder.customerPhone);
         if (customer && customer.fcmToken) {
           // Convert all data values to strings for FCM
           const notificationData = {
