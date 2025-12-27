@@ -2,7 +2,7 @@ const axios = require('axios');
 
 // Google Maps API configuration
 // يمكنك إضافة API Key هنا مباشرة أو استخدام Environment Variable
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyBmY1uIqjlHA3UPRyhzxYqOCr6264nFzjo';
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyBhd3aXuiiMc8GfYQbu0mi1KkgZSrKD5-4';
 
 // Base URLs
 const DIRECTIONS_API_URL = 'https://maps.googleapis.com/maps/api/directions/json';
