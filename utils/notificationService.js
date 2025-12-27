@@ -23,17 +23,17 @@ async function removeInvalidToken(fcmToken) {
     // Remove token from Users
     const userResult = await User.updateMany(
       { fcmToken: fcmToken },
-      { $unset: { fcmToken: '' }, updatedAt: new Date() }
+      { $unset: { fcmToken: '' }, $set: { updatedAt: new Date() } }
     );
     
     // Remove token from Drivers
     const driverResult = await Driver.updateMany(
       { fcmToken: fcmToken },
-      { $unset: { fcmToken: '' }, updatedAt: new Date() }
+      { $unset: { fcmToken: '' }, $set: { updatedAt: new Date() } }
     );
     
     if (userResult.modifiedCount > 0 || driverResult.modifiedCount > 0) {
-      logger.debug(`Removed invalid FCM token from ${userResult.modifiedCount} user(s) and ${driverResult.modifiedCount} driver(s)`);
+      logger.warn(`🧹 Removed invalid FCM token (${fcmToken.substring(0, 20)}...) from ${userResult.modifiedCount} user(s) and ${driverResult.modifiedCount} driver(s)`);
       return true;
     }
     
@@ -96,11 +96,9 @@ async function sendNotification(fcmToken, title, body, data = {}) {
     // Handle specific Firebase errors
     if (error.code === 'messaging/invalid-registration-token' || 
         error.code === 'messaging/registration-token-not-registered') {
-      logger.warn('Invalid or expired FCM token - removing from database');
-      // Remove invalid token from database asynchronously (don't wait for it)
-      removeInvalidToken(fcmToken).catch(err => {
-        logger.error('Error removing invalid token:', err);
-      });
+      logger.warn(`Invalid or expired FCM token (${fcmToken.substring(0, 20)}...) - removing from database`);
+      // Remove invalid token from database (wait for it to complete)
+      await removeInvalidToken(fcmToken);
     } else if (error.code === 'messaging/invalid-argument') {
       logger.warn('Invalid message format');
     }
@@ -160,9 +158,7 @@ async function sendMulticastNotification(fcmTokens, title, body, data = {}) {
       // Remove invalid token from database if it's an invalid/not-registered error
       if (error.code === 'messaging/invalid-registration-token' || 
           error.code === 'messaging/registration-token-not-registered') {
-        removeInvalidToken(token).catch(err => {
-          logger.error('Error removing invalid token:', err);
-        });
+        await removeInvalidToken(token);
       }
       
       return { success: false, token, error };
