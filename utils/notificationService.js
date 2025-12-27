@@ -1,5 +1,7 @@
 const admin = require('../config/firebase');
 const logger = require('./logger');
+const User = require('../models/User');
+const Driver = require('../models/Driver');
 
 /**
  * Check if Firebase is initialized
@@ -8,6 +10,36 @@ function isFirebaseInitialized() {
   try {
     return admin.apps.length > 0 && admin.messaging;
   } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * Remove invalid FCM token from database
+ * @param {string} fcmToken - Invalid FCM token to remove
+ */
+async function removeInvalidToken(fcmToken) {
+  try {
+    // Remove token from Users
+    const userResult = await User.updateMany(
+      { fcmToken: fcmToken },
+      { $unset: { fcmToken: '' }, updatedAt: new Date() }
+    );
+    
+    // Remove token from Drivers
+    const driverResult = await Driver.updateMany(
+      { fcmToken: fcmToken },
+      { $unset: { fcmToken: '' }, updatedAt: new Date() }
+    );
+    
+    if (userResult.modifiedCount > 0 || driverResult.modifiedCount > 0) {
+      logger.debug(`Removed invalid FCM token from ${userResult.modifiedCount} user(s) and ${driverResult.modifiedCount} driver(s)`);
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    logger.error('Error removing invalid FCM token from database:', error);
     return false;
   }
 }
@@ -64,7 +96,11 @@ async function sendNotification(fcmToken, title, body, data = {}) {
     // Handle specific Firebase errors
     if (error.code === 'messaging/invalid-registration-token' || 
         error.code === 'messaging/registration-token-not-registered') {
-      logger.warn('Invalid or expired FCM token - user may need to re-login');
+      logger.warn('Invalid or expired FCM token - removing from database');
+      // Remove invalid token from database asynchronously (don't wait for it)
+      removeInvalidToken(fcmToken).catch(err => {
+        logger.error('Error removing invalid token:', err);
+      });
     } else if (error.code === 'messaging/invalid-argument') {
       logger.warn('Invalid message format');
     }
@@ -120,6 +156,15 @@ async function sendMulticastNotification(fcmTokens, title, body, data = {}) {
     } catch (error) {
       errors.push({ token: token.substring(0, 20) + '...', error: error.message });
       logger.error(`Failed to send to token ${token.substring(0, 20)}...:`, error.code || 'unknown', error.message);
+      
+      // Remove invalid token from database if it's an invalid/not-registered error
+      if (error.code === 'messaging/invalid-registration-token' || 
+          error.code === 'messaging/registration-token-not-registered') {
+        removeInvalidToken(token).catch(err => {
+          logger.error('Error removing invalid token:', err);
+        });
+      }
+      
       return { success: false, token, error };
     }
   });
@@ -155,5 +200,6 @@ async function sendMulticastNotification(fcmTokens, title, body, data = {}) {
 module.exports = {
   sendNotification,
   sendMulticastNotification,
+  removeInvalidToken,
 };
 
