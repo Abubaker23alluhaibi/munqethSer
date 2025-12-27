@@ -93,15 +93,18 @@ exports.getOrders = async (req, res) => {
     
     if (isAvailableOrdersQuery) {
       const now = new Date();
-      const expirationTime = new Date(now.getTime() - ORDER_EXPIRATION_TIME);
+      // استخدام buffer time (6 دقائق بدلاً من 5) لتجنب إزالة الطلبات الجديدة بسبب فارق التوقيت
+      const BUFFER_TIME = 1 * 60 * 1000; // دقيقة إضافية كـ buffer
+      const expirationTime = new Date(now.getTime() - ORDER_EXPIRATION_TIME - BUFFER_TIME);
       
       const beforeFilter = orders.length;
       
-      // أولاً، إلغاء الطلبات المنتهية تلقائياً قبل الفلترة
+      // أولاً، إلغاء الطلبات المنتهية تلقائياً قبل الفلترة (فقط الطلبات التي تجاوزت 5 دقائق + buffer)
       const expiredOrdersToCancel = orders.filter(order => {
+        const orderAge = now.getTime() - new Date(order.createdAt).getTime();
         return (order.status === 'pending' || order.status === 'ready' || order.status === 'preparing') &&
                !order.driverId &&
-               order.createdAt < expirationTime &&
+               orderAge > (ORDER_EXPIRATION_TIME + BUFFER_TIME) &&
                order.status !== 'cancelled';
       });
       
@@ -134,11 +137,15 @@ exports.getOrders = async (req, res) => {
           return false;
         }
         
-        // استبعاد الطلبات المنتهية (أكثر من 5 دقائق)
-        if (order.createdAt < expirationTime) {
+        // استبعاد الطلبات المنتهية (أكثر من 5 دقائق + buffer)
+        // استخدام حساب دقيق للعمر لتجنب مشاكل التوقيت
+        const orderAge = now.getTime() - new Date(order.createdAt).getTime();
+        if (orderAge > (ORDER_EXPIRATION_TIME + BUFFER_TIME)) {
+          logger.debug(`Order ${order._id} filtered: expired (${Math.round(orderAge / 1000 / 60)} minutes old)`);
           return false;
         }
         
+        logger.debug(`Order ${order._id} is valid (${Math.round(orderAge / 1000)} seconds old)`);
         return true;
       });
       
