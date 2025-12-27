@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const { normalizeIraqiPhone } = require('../utils/phoneUtils');
 const bcrypt = require('bcryptjs');
+const logger = require('../utils/logger');
 
 // Helper function to find user by phone (supports both old and new formats)
 // Exported for use in other controllers
@@ -191,10 +192,10 @@ exports.updateFcmTokenByPhone = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    console.log(`✅ Updated FCM token for user ${user.name} (${user.phone})`);
+    logger.success(`✅ Updated FCM token for user ${user.name} (${user.phone})`);
     res.json({ message: 'FCM token updated successfully', user });
   } catch (error) {
-    console.error('Error updating user FCM token:', error);
+    logger.error('Error updating user FCM token:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -219,10 +220,10 @@ exports.updateFcmToken = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    console.log(`✅ Updated FCM token for user ${user.name} (${user.phone})`);
+    logger.success(`✅ Updated FCM token for user ${user.name} (${user.phone})`);
     res.json({ message: 'FCM token updated successfully', user });
   } catch (error) {
-    console.error('Error updating user FCM token:', error);
+    logger.error('Error updating user FCM token:', error);
     res.status(500).json({ error: error.message });
   }
 };

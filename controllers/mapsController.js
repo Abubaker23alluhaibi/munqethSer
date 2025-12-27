@@ -1,4 +1,5 @@
 const googleMaps = require('../config/googleMaps');
+const logger = require('../utils/logger');
 
 /**
  * Get directions between two points
@@ -28,7 +29,7 @@ exports.getDirections = async (req, res) => {
 
     res.json(directions);
   } catch (error) {
-    console.error('Error in getDirections:', error);
+    logger.error('Error in getDirections:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -54,7 +55,7 @@ exports.geocodeAddress = async (req, res) => {
     const geocode = await googleMaps.geocodeAddress(address);
     res.json(geocode);
   } catch (error) {
-    console.error('Error in geocodeAddress:', error);
+    logger.error('Error in geocodeAddress:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -80,7 +81,7 @@ exports.reverseGeocode = async (req, res) => {
     const geocode = await googleMaps.reverseGeocode(parseFloat(lat), parseFloat(lng));
     res.json(geocode);
   } catch (error) {
-    console.error('Error in reverseGeocode:', error);
+    logger.error('Error in reverseGeocode:', error);
     res.status(500).json({ error: error.message });
   }
 };

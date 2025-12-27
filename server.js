@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const http = require('http');
 const socketIo = require('socket.io');
+const logger = require('./utils/logger');
 require('dotenv').config();
 
 const app = express();
@@ -109,7 +110,7 @@ app.use((req, res, next) => {
 
 // Error Handler
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
+  logger.error('Request Error:', err);
   res.status(err.status || 500).json({ 
     status: 'ERROR', 
     message: err.message || 'Internal server error'
@@ -118,12 +119,12 @@ app.use((err, req, res, next) => {
 
 // Socket.IO for real-time tracking
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  logger.debug('Client connected:', socket.id);
 
   // Join driver room for location updates
   socket.on('driver:join', (driverId) => {
     socket.join(`driver:${driverId}`);
-    console.log(`Driver ${driverId} joined room`);
+    logger.debug(`Driver ${driverId} joined room`);
   });
 
   // Update driver location
@@ -141,7 +142,7 @@ io.on('connection', (socket) => {
   // Join order tracking room
   socket.on('order:track', (orderId) => {
     socket.join(`order:${orderId}`);
-    console.log(`Client tracking order ${orderId}`);
+    logger.debug(`Client tracking order ${orderId}`);
   });
 
   // Order status update
@@ -155,7 +156,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    logger.debug('Client disconnected:', socket.id);
   });
 });
 
@@ -164,10 +165,10 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://munqeth7899:4NWuDr
 
 mongoose.connect(MONGODB_URI)
 .then(() => {
-  console.log('✅ Connected to MongoDB');
+  logger.success('Connected to MongoDB');
 })
 .catch((error) => {
-  console.error('❌ MongoDB connection error:', error);
+  logger.error('MongoDB connection error:', error);
   process.exit(1);
 });
 
@@ -179,11 +180,11 @@ const orderController = require('./controllers/orderController');
 
 // Cleanup expired orders on server startup (wait for MongoDB connection)
 mongoose.connection.once('open', async () => {
-  console.log('🧹 Running initial cleanup of expired orders...');
+  logger.info('Running initial cleanup of expired orders...');
   try {
     await orderController.cleanupExpiredOrders(io);
   } catch (error) {
-    console.error('Error in initial cleanup:', error);
+    logger.error('Error in initial cleanup:', error);
   }
 });
 
@@ -192,17 +193,17 @@ setInterval(async () => {
   try {
     await orderController.checkAndExpireOrders(io);
   } catch (error) {
-    console.error('Error in expired orders check:', error);
+    logger.error('Error in expired orders check:', error);
   }
 }, 60000); // Check every 60 seconds (1 minute)
 
-console.log('⏰ Order expiration checker started (checks every 1 minute)');
+logger.info('Order expiration checker started (checks every 1 minute)');
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 server.listen(PORT, HOST, () => {
-  console.log(`🚀 Server is running on ${HOST}:${PORT}`);
-  console.log(`📡 Socket.IO server is ready`);
+  logger.success(`Server is running on ${HOST}:${PORT}`);
+  logger.success('Socket.IO server is ready');
 });
 
 module.exports = { app, io };

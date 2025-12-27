@@ -1,5 +1,6 @@
 const cloudinary = require('../config/cloudinary');
 const multer = require('multer');
+const logger = require('../utils/logger');
 
 // Configure multer for memory storage
 const storage = multer.memoryStorage();
@@ -39,7 +40,7 @@ exports.uploadImage = async (req, res) => {
       height: uploadResult.height,
     });
   } catch (error) {
-    console.error('Error uploading image:', error);
+    logger.error('Error uploading image:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -79,7 +80,7 @@ exports.uploadMultipleImages = async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error('Error uploading images:', error);
+    logger.error('Error uploading images:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -96,7 +97,7 @@ exports.deleteImage = async (req, res) => {
     const result = await cloudinary.uploader.destroy(publicId);
     res.json(result);
   } catch (error) {
-    console.error('Error deleting image:', error);
+    logger.error('Error deleting image:', error);
     res.status(500).json({ error: error.message });
   }
 };

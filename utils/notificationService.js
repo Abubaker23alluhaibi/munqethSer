@@ -1,4 +1,5 @@
 const admin = require('../config/firebase');
+const logger = require('./logger');
 
 /**
  * Check if Firebase is initialized
@@ -20,13 +21,13 @@ function isFirebaseInitialized() {
  */
 async function sendNotification(fcmToken, title, body, data = {}) {
   if (!fcmToken) {
-    console.warn('⚠️ No FCM token provided - notification not sent');
+    logger.warn('No FCM token provided - notification not sent');
     return null;
   }
 
   if (!isFirebaseInitialized()) {
-    console.warn('⚠️ Firebase not initialized - notification not sent');
-    console.warn('⚠️ Check if FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, and FIREBASE_CLIENT_EMAIL are set');
+    logger.warn('Firebase not initialized - notification not sent');
+    logger.warn('Check if FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, and FIREBASE_CLIENT_EMAIL are set');
     return null;
   }
 
@@ -49,23 +50,23 @@ async function sendNotification(fcmToken, title, body, data = {}) {
       token: fcmToken,
     };
 
-    console.log(`📤 Sending notification to token: ${fcmToken.substring(0, 20)}...`);
-    console.log(`📝 Title: ${title}, Body: ${body}`);
+    logger.debug(`Sending notification to token: ${fcmToken.substring(0, 20)}...`);
+    logger.debug(`Title: ${title}, Body: ${body}`);
     
     const response = await admin.messaging().send(message);
-    console.log('✅ Notification sent successfully:', response);
+    logger.success('Notification sent successfully:', response);
     return response;
   } catch (error) {
-    console.error('❌ Error sending notification:', error);
-    console.error('❌ Error code:', error.code);
-    console.error('❌ Error message:', error.message);
+    logger.error('Error sending notification:', error);
+    logger.error('Error code:', error.code);
+    logger.error('Error message:', error.message);
     
     // Handle specific Firebase errors
     if (error.code === 'messaging/invalid-registration-token' || 
         error.code === 'messaging/registration-token-not-registered') {
-      console.warn('⚠️ Invalid or expired FCM token - user may need to re-login');
+      logger.warn('Invalid or expired FCM token - user may need to re-login');
     } else if (error.code === 'messaging/invalid-argument') {
-      console.warn('⚠️ Invalid message format');
+      logger.warn('Invalid message format');
     }
     
     throw error;
@@ -82,29 +83,29 @@ async function sendNotification(fcmToken, title, body, data = {}) {
  */
 async function sendMulticastNotification(fcmTokens, title, body, data = {}) {
   if (!fcmTokens || fcmTokens.length === 0) {
-    console.warn('⚠️ No FCM tokens provided - notifications not sent');
+    logger.warn('No FCM tokens provided - notifications not sent');
     return null;
   }
 
   // Filter out null/undefined tokens
   const validTokens = fcmTokens.filter(token => token && token.trim().length > 0);
   if (validTokens.length === 0) {
-    console.warn('⚠️ No valid FCM tokens provided - notifications not sent');
+    logger.warn('No valid FCM tokens provided - notifications not sent');
     return null;
   }
 
   if (validTokens.length < fcmTokens.length) {
-    console.warn(`⚠️ Filtered out ${fcmTokens.length - validTokens.length} invalid tokens`);
+    logger.warn(`Filtered out ${fcmTokens.length - validTokens.length} invalid tokens`);
   }
 
   if (!isFirebaseInitialized()) {
-    console.warn('⚠️ Firebase not initialized - notifications not sent');
-    console.warn('⚠️ Check if FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, and FIREBASE_CLIENT_EMAIL are set');
+    logger.warn('Firebase not initialized - notifications not sent');
+    logger.warn('Check if FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, and FIREBASE_CLIENT_EMAIL are set');
     return null;
   }
 
-  console.log(`📤 Sending notifications to ${validTokens.length} devices (using individual sends)`);
-  console.log(`📝 Title: ${title}, Body: ${body}`);
+  logger.debug(`Sending notifications to ${validTokens.length} devices (using individual sends)`);
+  logger.debug(`Title: ${title}, Body: ${body}`);
 
   // Send notifications individually to avoid Firebase multicast API issues
   let successCount = 0;
@@ -118,7 +119,7 @@ async function sendMulticastNotification(fcmTokens, title, body, data = {}) {
       return { success: result !== null, token };
     } catch (error) {
       errors.push({ token: token.substring(0, 20) + '...', error: error.message });
-      console.error(`❌ Failed to send to token ${token.substring(0, 20)}...:`, error.code || 'unknown', error.message);
+      logger.error(`Failed to send to token ${token.substring(0, 20)}...:`, error.code || 'unknown', error.message);
       return { success: false, token, error };
     }
   });
@@ -135,10 +136,10 @@ async function sendMulticastNotification(fcmTokens, title, body, data = {}) {
     }
   });
 
-  console.log(`✅ Notifications sent: ${successCount}/${validTokens.length}`);
+  logger.success(`Notifications sent: ${successCount}/${validTokens.length}`);
   
   if (failureCount > 0) {
-    console.warn(`⚠️ ${failureCount} notifications failed`);
+    logger.warn(`${failureCount} notifications failed`);
   }
 
   return {

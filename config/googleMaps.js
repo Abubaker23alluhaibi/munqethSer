@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../utils/logger');
 
 // Google Maps API configuration
 // يمكنك إضافة API Key هنا مباشرة أو استخدام Environment Variable
@@ -41,7 +42,7 @@ async function getDirections(originLat, originLng, destLat, destLng, mode = 'dri
       throw new Error(`Directions API error: ${response.data.status}`);
     }
   } catch (error) {
-    console.error('Error getting directions:', error);
+    logger.error('Error getting directions:', error);
     throw error;
   }
 }
@@ -72,7 +73,7 @@ async function geocodeAddress(address) {
       throw new Error(`Geocoding API error: ${response.data.status}`);
     }
   } catch (error) {
-    console.error('Error geocoding address:', error);
+    logger.error('Error geocoding address:', error);
     throw error;
   }
 }
@@ -104,7 +105,7 @@ async function reverseGeocode(lat, lng) {
       throw new Error(`Reverse geocoding API error: ${response.data.status}`);
     }
   } catch (error) {
-    console.error('Error reverse geocoding:', error);
+    logger.error('Error reverse geocoding:', error);
     throw error;
   }
 }
@@ -119,9 +120,9 @@ function isConfigured() {
 
 // Log configuration status on load
 if (isConfigured()) {
-  console.log('✅ Google Maps API configured');
+  logger.success('Google Maps API configured');
 } else {
-  console.log('ℹ️ Google Maps API not configured (optional - add GOOGLE_MAPS_API_KEY to use directions/geocoding)');
+  logger.info('Google Maps API not configured (optional - add GOOGLE_MAPS_API_KEY to use directions/geocoding)');
 }
 
 module.exports = {

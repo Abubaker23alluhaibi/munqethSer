@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const { calculateDistance } = require('../utils/distanceCalculator');
 const { sendNotification } = require('../utils/notificationService');
 const { findUserByPhone } = require('./userController');
+const logger = require('../utils/logger');
 
 // Get all drivers
 exports.getAllDrivers = async (req, res) => {
@@ -25,7 +26,7 @@ exports.getAllDrivers = async (req, res) => {
     const updatedDrivers = await Promise.all(drivers.map(async (driver) => {
       // إذا لم يكن driverId موجود، نستخدم _id كـ driverId
       if (!driver.driverId || driver.driverId.trim() === '') {
-        console.log(`Updating driver ${driver._id}: missing driverId, using _id as fallback`);
+        logger.debug(`Updating driver ${driver._id}: missing driverId, using _id as fallback`);
         driver.driverId = driver._id.toString();
         await driver.save();
       }
@@ -44,7 +45,7 @@ exports.getDriverById = async (req, res) => {
     const { id } = req.params;
     const cleanId = id.trim().toUpperCase();
     
-    console.log(`Searching for driver with ID: ${cleanId}`);
+    logger.debug(`Searching for driver with ID: ${cleanId}`);
     
     let driver = null;
     
@@ -59,7 +60,7 @@ exports.getDriverById = async (req, res) => {
     }
     driver = await Driver.findOne(driverIdQuery);
     if (driver) {
-      console.log(`Driver found by driverId: ${driver.name}, driverId: ${driver.driverId}`);
+      logger.debug(`Driver found by driverId: ${driver.name}, driverId: ${driver.driverId}`);
     }
     
     // ثانياً: البحث بالكود
@@ -71,7 +72,7 @@ exports.getDriverById = async (req, res) => {
       }
       driver = await Driver.findOne(codeQuery);
       if (driver) {
-        console.log(`Driver found by code: ${driver.name}, code: ${driver.code}`);
+        logger.debug(`Driver found by code: ${driver.name}, code: ${driver.code}`);
       }
     }
     
@@ -86,7 +87,7 @@ exports.getDriverById = async (req, res) => {
             if (!includeDeleted && (driver.isDeleted === true || driver.isActive === false)) {
               driver = null;
             } else {
-              console.log(`Driver found by MongoDB _id: ${driver.name}, _id: ${driver._id}`);
+              logger.debug(`Driver found by MongoDB _id: ${driver.name}, _id: ${driver._id}`);
             }
           }
         }
@@ -96,14 +97,14 @@ exports.getDriverById = async (req, res) => {
     }
     
     if (!driver) {
-      console.log(`Driver not found with ID: ${cleanId}`);
+      logger.debug(`Driver not found with ID: ${cleanId}`);
       return res.status(404).json({ error: 'Driver not found' });
     }
     
-    console.log(`Returning driver: ${driver.name}, driverId: ${driver.driverId}`);
+    logger.debug(`Returning driver: ${driver.name}, driverId: ${driver.driverId}`);
     res.json(driver);
   } catch (error) {
-    console.error('Error in getDriverById:', error);
+    logger.error('Error in getDriverById:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -139,13 +140,13 @@ exports.addDriver = async (req, res) => {
     }
     
     // طباعة البيانات المستلمة للتأكد
-    console.log('Received driver data:', JSON.stringify(driverData, null, 2));
-    console.log('driverId:', driverData.driverId);
+    logger.debug('Received driver data:', JSON.stringify(driverData, null, 2));
+    logger.debug('driverId:', driverData.driverId);
     
     const driver = new Driver(driverData);
     
     // طباعة البيانات قبل الحفظ
-    console.log('Driver object before save:', {
+    logger.debug('Driver object before save:', {
       driverId: driver.driverId,
       code: driver.code,
       name: driver.name,
@@ -158,29 +159,29 @@ exports.addDriver = async (req, res) => {
     const savedDriver = await Driver.findById(driver._id);
     
     // طباعة البيانات بعد الحفظ للتأكد
-    console.log('Driver saved successfully!');
-    console.log('MongoDB _id:', savedDriver._id);
-    console.log('driverId:', savedDriver.driverId);
-    console.log('code:', savedDriver.code);
-    console.log('name:', savedDriver.name);
+    logger.debug('Driver saved successfully!');
+    logger.debug('MongoDB _id:', savedDriver._id);
+    logger.debug('driverId:', savedDriver.driverId);
+    logger.debug('code:', savedDriver.code);
+    logger.debug('name:', savedDriver.name);
     
     // إرجاع السائق المحفوظ مع جميع الحقول
     res.status(201).json(savedDriver);
   } catch (error) {
-    console.error('Error creating driver:', error);
+    logger.error('Error creating driver:', error);
     
     if (error.code === 11000) {
       // تحديد الحقل المكرر (المعرف أو الهاتف فقط، الكود يمكن أن يتكرر)
-      console.log('Duplicate key error - keyPattern:', error.keyPattern);
-      console.log('Duplicate key error - keyValue:', error.keyValue);
+      logger.debug('Duplicate key error - keyPattern:', error.keyPattern);
+      logger.debug('Duplicate key error - keyValue:', error.keyValue);
       
       const keyPattern = error.keyPattern || {};
       const keyValue = error.keyValue || {};
       
       // تجاهل خطأ code المكرر - السماح بالرمز المكرر
       if (keyPattern.code) {
-        console.log('⚠️ Duplicate code detected, but allowing it. Removing unique index from MongoDB is recommended.');
-        console.log('   Run: npm run remove-code-index');
+        logger.debug('⚠️ Duplicate code detected, but allowing it. Removing unique index from MongoDB is recommended.');
+        logger.debug('   Run: npm run remove-code-index');
         // محاولة إعادة الحفظ بدون التحقق من unique constraint
         try {
           // إزالة code مؤقتاً ثم إضافته مرة أخرى
@@ -194,7 +195,7 @@ exports.addDriver = async (req, res) => {
           const savedDriver = await Driver.findById(driver._id);
           return res.status(201).json(savedDriver);
         } catch (retryError) {
-          console.error('Error retrying save without code constraint:', retryError);
+          logger.error('Error retrying save without code constraint:', retryError);
           // إذا فشل، نعامل code كخطأ عادي ونطلب إزالة الـ index
           return res.status(400).json({ 
             error: `الرمز (${keyValue.code}) موجود مسبقاً. يرجى تشغيل: npm run remove-code-index لإزالة القيد.` 
@@ -221,13 +222,13 @@ exports.addDriver = async (req, res) => {
       } else {
         // إذا كان الحقل غير معروف، نطبع معلومات الخطأ
         errorMessage = `البيانات موجودة مسبقاً. الحقل المكرر: ${JSON.stringify(keyPattern)}`;
-        console.error('Unknown duplicate field:', keyPattern);
+        logger.error('Unknown duplicate field:', keyPattern);
       }
       
       return res.status(400).json({ error: errorMessage });
     }
     
-    console.error('Unexpected error:', error.message);
+    logger.error('Unexpected error:', error.message);
     res.status(500).json({ error: error.message });
   }
 };
@@ -259,7 +260,7 @@ exports.updateDriver = async (req, res) => {
         delete updates.code; // إزالة code من التحديثات
       } else {
         // السماح بالرمز المكرر - لا نتحقق من التكرار
-        console.log('Updating code - allowing duplicates');
+        logger.debug('Updating code - allowing duplicates');
       }
     }
     
@@ -275,8 +276,8 @@ exports.updateDriver = async (req, res) => {
     // إذا كان هناك تحديث للرمز، نحاول تحديث code بشكل منفصل
     // لأن MongoDB قد يكون لديه unique index على code
     if (updates.code) {
-      console.log('Attempting to update code with allowDuplicateCode flag');
-      console.log('Updating code from', existingDriver.code, 'to', updates.code);
+      logger.debug('Attempting to update code with allowDuplicateCode flag');
+      logger.debug('Updating code from', existingDriver.code, 'to', updates.code);
       
       const codeValue = updates.code; // حفظ قيمة code قبل حذفها
       delete updates.code; // إزالة code من updates مؤقتاً
@@ -295,18 +296,18 @@ exports.updateDriver = async (req, res) => {
         // نستخدم collection.updateOne مباشرة مع unset ثم set لتجاوز unique constraint
         const objectId = new mongoose.Types.ObjectId(id);
         
-        console.log('Step 1: Removing old code...');
+        logger.debug('Step 1: Removing old code...');
         // أولاً: إزالة code القديم
         const unsetResult = await Driver.collection.updateOne(
           { _id: objectId },
           { $unset: { code: "" } }
         );
-        console.log('Unset result:', unsetResult);
+        logger.debug('Unset result:', unsetResult);
         
         // انتظار قليل للتأكد من أن MongoDB قام بإزالة code
         await new Promise(resolve => setTimeout(resolve, 100));
         
-        console.log('Step 2: Setting new code...');
+        logger.debug('Step 2: Setting new code...');
         // ثانياً: إضافة code الجديد
         // محاولة استخدام hint لتجاوز unique index (إذا كان موجود)
         try {
@@ -315,19 +316,19 @@ exports.updateDriver = async (req, res) => {
             { $set: { code: codeValue } },
             { hint: { _id: 1 } } // استخدام hint على _id لتجاوز unique index على code
           );
-          console.log('Set result:', setResult);
+          logger.debug('Set result:', setResult);
           
           if (setResult.modifiedCount === 0 && setResult.matchedCount > 0) {
-            console.log('Code might already be set, checking...');
+            logger.debug('Code might already be set, checking...');
           }
           
-          console.log('Code updated successfully using two-step update');
+          logger.debug('Code updated successfully using two-step update');
         } catch (setError) {
           // إذا فشل بسبب unique constraint، نحاول بدون hint
-          console.log('First attempt failed, trying without hint...');
+          logger.debug('First attempt failed, trying without hint...');
           if (setError.code === 11000) {
-            console.error('❌ Still getting duplicate key error. Unique index must be removed from MongoDB.');
-            console.error('   Please run: npm run remove-code-index');
+            logger.error('❌ Still getting duplicate key error. Unique index must be removed from MongoDB.');
+            logger.error('   Please run: npm run remove-code-index');
             throw new Error('Cannot update code: unique index exists on code field. Please remove it using: npm run remove-code-index');
           }
           throw setError;
@@ -341,7 +342,7 @@ exports.updateDriver = async (req, res) => {
         
         res.json(driver);
       } catch (updateError) {
-        console.error('Error in two-step code update:', updateError);
+        logger.error('Error in two-step code update:', updateError);
         
         // إذا فشل، نعيد code إلى updates ونحاول الطريقة العادية
         updates.code = codeValue;
@@ -385,7 +386,7 @@ exports.updateDriver = async (req, res) => {
       res.json(driver);
     }
   } catch (error) {
-    console.error('Error updating driver:', error);
+    logger.error('Error updating driver:', error);
     
     // معالجة خطأ unique constraint
     if (error.code === 11000) {
@@ -395,8 +396,8 @@ exports.updateDriver = async (req, res) => {
       
       // تجاهل خطأ code المكرر - السماح بالرمز المكرر
       if (keyPattern.code) {
-        console.log('⚠️ Duplicate code detected during update, but allowing it. Removing unique index from MongoDB is recommended.');
-        console.log('   Run: npm run remove-code-index');
+        logger.debug('⚠️ Duplicate code detected during update, but allowing it. Removing unique index from MongoDB is recommended.');
+        logger.debug('   Run: npm run remove-code-index');
         // محاولة تحديث code بشكل منفصل
         try {
           const codeValue = updates.code;
@@ -414,7 +415,7 @@ exports.updateDriver = async (req, res) => {
           const driver = await Driver.findById(id);
           return res.json(driver);
         } catch (retryError) {
-          console.error('Error retrying update without code constraint:', retryError);
+          logger.error('Error retrying update without code constraint:', retryError);
           return res.status(400).json({ 
             error: `الرمز (${keyValue.code || req.body.code}) موجود مسبقاً. يرجى تشغيل: npm run remove-code-index لإزالة القيد.` 
           });
@@ -491,7 +492,7 @@ exports.updateDriverLocation = async (req, res) => {
       // إذا كان التغيير أكثر من 10 كيلومتر في تحديث واحد، قد يكون خطأ GPS
       // نسمح به لكن نطبع تحذير
       if (distance && distance > 10) {
-        console.warn(`⚠️ Large location jump detected for driver ${driverId}: ${distance.toFixed(2)} km`);
+        logger.warn(`⚠️ Large location jump detected for driver ${driverId}: ${distance.toFixed(2)} km`);
         // نسمح بالتحديث لكن قد يكون خطأ GPS
       }
       
@@ -579,7 +580,7 @@ exports.updateDriverLocation = async (req, res) => {
                 }
               );
               
-              console.log(`✅ Sent approaching notification to customer for order ${order._id}`);
+              logger.debug(`✅ Sent approaching notification to customer for order ${order._id}`);
               
               // تحديث الطلب لتجنب إرسال إشعارات متعددة
               order.driverApproachingNotified = true;
@@ -588,7 +589,7 @@ exports.updateDriverLocation = async (req, res) => {
           }
         }
       } catch (error) {
-        console.error('Error checking for approaching notifications:', error);
+        logger.error('Error checking for approaching notifications:', error);
         // لا نفشل الطلب الرئيسي إذا فشل إرسال الإشعار
       }
     }
@@ -616,14 +617,14 @@ exports.deleteDriver = async (req, res) => {
     driver.updatedAt = new Date();
     await driver.save();
     
-    console.log(`✅ Driver ${driver.name} (${driver.driverId}) marked as deleted`);
+    logger.debug(`✅ Driver ${driver.name} (${driver.driverId}) marked as deleted`);
     
     res.json({ 
       message: 'Driver deleted successfully',
       driver 
     });
   } catch (error) {
-    console.error('Error deleting driver:', error);
+    logger.error('Error deleting driver:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -669,10 +670,10 @@ exports.updateFcmToken = async (req, res) => {
       return res.status(404).json({ error: 'Driver not found' });
     }
     
-    console.log(`✅ Updated FCM token for driver ${driver.name} (${driver.driverId})`);
+    logger.debug(`✅ Updated FCM token for driver ${driver.name} (${driver.driverId})`);
     res.json({ message: 'FCM token updated successfully', driver });
   } catch (error) {
-    console.error('Error updating driver FCM token:', error);
+    logger.error('Error updating driver FCM token:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -697,10 +698,10 @@ exports.updateFcmTokenByDriverId = async (req, res) => {
       return res.status(404).json({ error: 'Driver not found' });
     }
     
-    console.log(`✅ Updated FCM token for driver ${driver.name} (${driver.driverId})`);
+    logger.debug(`✅ Updated FCM token for driver ${driver.name} (${driver.driverId})`);
     res.json({ message: 'FCM token updated successfully', driver });
   } catch (error) {
-    console.error('Error updating driver FCM token:', error);
+    logger.error('Error updating driver FCM token:', error);
     res.status(500).json({ error: error.message });
   }
 };

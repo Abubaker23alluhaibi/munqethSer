@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const logger = require('../utils/logger');
 
 // Initialize Firebase Admin (optional - only if credentials are provided)
 if (!admin.apps.length) {
@@ -16,12 +17,12 @@ if (!admin.apps.length) {
           clientEmail: clientEmail,
         }),
       });
-      console.log('✅ Firebase Admin initialized');
+      logger.success('Firebase Admin initialized');
     } catch (error) {
-      console.warn('⚠️ Firebase initialization skipped (optional):', error.message);
+      logger.warn('Firebase initialization skipped (optional):', error.message);
     }
   } else {
-    console.log('ℹ️ Firebase Admin not initialized (credentials not provided - optional)');
+    logger.info('Firebase Admin not initialized (credentials not provided - optional)');
   }
 }
 

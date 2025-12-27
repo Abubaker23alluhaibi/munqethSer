@@ -5,6 +5,7 @@ const { calculateDistance } = require('../utils/distanceCalculator');
 const { sendNotification, sendMulticastNotification } = require('../utils/notificationService');
 const { normalizeIraqiPhone } = require('../utils/phoneUtils');
 const { findUserByPhone } = require('./userController');
+const logger = require('../utils/logger');
 
 // Order expiration time in milliseconds (5 minutes)
 const ORDER_EXPIRATION_TIME = 5 * 60 * 1000; // 5 minutes
@@ -29,9 +30,9 @@ exports.getOrders = async (req, res) => {
         oldFormat = '0' + oldFormat.substring(4);
       }
       
-      console.log('Searching for orders with customerPhone:', customerPhone);
-      console.log('Normalized phone (new format):', normalizedPhone);
-      console.log('Old format:', oldFormat);
+      logger.debug('Searching for orders with customerPhone:', customerPhone);
+      logger.debug('Normalized phone (new format):', normalizedPhone);
+      logger.debug('Old format:', oldFormat);
       
       // البحث بعدة أشكال من رقم الهاتف (الجديد والقديم)
       query.$or = [
@@ -41,7 +42,7 @@ exports.getOrders = async (req, res) => {
       ];
     }
     
-    console.log('Getting orders with query:', JSON.stringify(query));
+    logger.debug('Getting orders with query:', JSON.stringify(query));
     
     let orders = await Order.find(query).sort({ createdAt: -1 });
     
@@ -58,7 +59,7 @@ exports.getOrders = async (req, res) => {
     
     // إلغاء الطلبات المنتهية في الخلفية (بدون انتظار - لتجنب إبطاء الاستجابة)
     if (expiredOrdersToCancel.length > 0) {
-      console.log(`🔄 Auto-cancelling ${expiredOrdersToCancel.length} expired orders in background...`);
+      logger.debug(`Auto-cancelling ${expiredOrdersToCancel.length} expired orders in background...`);
       // استخدام setImmediate لتشغيل الإلغاء في الخلفية
       setImmediate(async () => {
         for (const order of expiredOrdersToCancel) {
@@ -68,10 +69,10 @@ exports.getOrders = async (req, res) => {
               orderDoc.status = 'cancelled';
               orderDoc.updatedAt = new Date();
               await orderDoc.save();
-              console.log(`✅ Auto-cancelled expired order: ${orderDoc._id}`);
+              logger.debug(`✅ Auto-cancelled expired order: ${orderDoc._id}`);
             }
           } catch (error) {
-            console.error(`❌ Error auto-cancelling order ${order._id}:`, error);
+            logger.error(`❌ Error auto-cancelling order ${order._id}:`, error);
           }
         }
       });
@@ -106,7 +107,7 @@ exports.getOrders = async (req, res) => {
       
       // إلغاء الطلبات المنتهية في الخلفية (بدون انتظار)
       if (expiredOrdersToCancel.length > 0) {
-        console.log(`🔄 Auto-cancelling ${expiredOrdersToCancel.length} expired orders...`);
+        logger.debug(`🔄 Auto-cancelling ${expiredOrdersToCancel.length} expired orders...`);
         expiredOrdersToCancel.forEach(async (order) => {
           try {
             const orderDoc = await Order.findById(order._id);
@@ -114,10 +115,10 @@ exports.getOrders = async (req, res) => {
               orderDoc.status = 'cancelled';
               orderDoc.updatedAt = new Date();
               await orderDoc.save();
-              console.log(`✅ Auto-cancelled expired order: ${orderDoc._id}`);
+              logger.debug(`✅ Auto-cancelled expired order: ${orderDoc._id}`);
             }
           } catch (error) {
-            console.error(`❌ Error auto-cancelling order ${order._id}:`, error);
+            logger.error(`❌ Error auto-cancelling order ${order._id}:`, error);
           }
         });
       }
@@ -141,14 +142,14 @@ exports.getOrders = async (req, res) => {
         return true;
       });
       
-      console.log(`🔍 Filtered expired/cancelled orders: ${beforeFilter} -> ${orders.length} (removed ${beforeFilter - orders.length})`);
+      logger.debug(`🔍 Filtered expired/cancelled orders: ${beforeFilter} -> ${orders.length} (removed ${beforeFilter - orders.length})`);
     }
     
-    console.log(`Found ${orders.length} orders`);
+    logger.debug(`Found ${orders.length} orders`);
     
     res.json(orders);
   } catch (error) {
-    console.error('Error getting orders:', error);
+    logger.error('Error getting orders:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -228,7 +229,7 @@ exports.createOrder = async (req, res) => {
           .map(item => item.driver.fcmToken)
           .filter(token => token);
         
-        console.log(`📍 Found ${driversWithDistance.length} nearest drivers for ${order.type} order`);
+        logger.debug(`📍 Found ${driversWithDistance.length} nearest drivers for ${order.type} order`);
         
         // Emit socket event to each nearest driver individually
         const io = req.app.get('io');
@@ -243,12 +244,12 @@ exports.createOrder = async (req, res) => {
                 ...order.toObject(),
                 isForThisDriver: true,
               });
-              console.log(`📡 Sent order to driver room: driver:${driver.driverId}`);
+              logger.debug(`📡 Sent order to driver room: driver:${driver.driverId}`);
             }
           });
         }
       } else {
-        console.warn(`⚠️ Customer location not provided for ${order.type} order, skipping driver notification`);
+        logger.warn(`⚠️ Customer location not provided for ${order.type} order, skipping driver notification`);
       }
     } else {
       // For other services (crane, fuel, car_emergency, maintenance, maid): send to all available drivers
@@ -261,7 +262,7 @@ exports.createOrder = async (req, res) => {
         .map(d => d.fcmToken)
         .filter(token => token);
       
-      console.log(`📢 Found ${availableDrivers.length} available drivers for ${order.type} order`);
+      logger.debug(`📢 Found ${availableDrivers.length} available drivers for ${order.type} order`);
       
       // Emit socket event for other services too
       const io = req.app.get('io');
@@ -274,7 +275,7 @@ exports.createOrder = async (req, res) => {
               ...order.toObject(),
               isForThisDriver: true,
             });
-            console.log(`📡 Sent order to driver room: driver:${driver.driverId}`);
+            logger.debug(`📡 Sent order to driver room: driver:${driver.driverId}`);
           }
         });
       }
@@ -304,12 +305,12 @@ exports.createOrder = async (req, res) => {
             orderType: order.type,
           }
         );
-        console.log(`✅ Sent new order notification to ${driverFcmTokens.length} drivers (${order.type})`);
+        logger.debug(`✅ Sent new order notification to ${driverFcmTokens.length} drivers (${order.type})`);
       } catch (notifError) {
-        console.error('Error sending notification to drivers:', notifError);
+        logger.error('Error sending notification to drivers:', notifError);
       }
     } else {
-      console.warn(`⚠️ No drivers found to notify for ${order.type} order`);
+      logger.warn(`⚠️ No drivers found to notify for ${order.type} order`);
     }
     
     // Send notification to customer (order created successfully)
@@ -326,17 +327,17 @@ exports.createOrder = async (req, res) => {
             status: order.status,
           }
         );
-        console.log('✅ Sent order created notification to customer');
+        logger.debug('✅ Sent order created notification to customer');
       } else {
         const customer = await findUserByPhone(order.customerPhone);
         if (customer) {
-          console.warn(`⚠️ Customer found but no FCM token for phone: ${order.customerPhone} - User needs to login again to register FCM token`);
+          logger.warn(`⚠️ Customer found but no FCM token for phone: ${order.customerPhone} - User needs to login again to register FCM token`);
         } else {
-          console.warn(`⚠️ Customer not found for phone: ${order.customerPhone}`);
+          logger.warn(`⚠️ Customer not found for phone: ${order.customerPhone}`);
         }
       }
     } catch (notifError) {
-      console.error('Error sending notification to customer:', notifError);
+      logger.error('Error sending notification to customer:', notifError);
     }
     
     res.status(201).json(order);
@@ -431,7 +432,7 @@ exports.updateOrderStatus = async (req, res) => {
         timestamp: new Date(),
       });
       
-      console.log(`📡 Emitted order status update via socket: ${id} -> ${status}`);
+      logger.debug(`📡 Emitted order status update via socket: ${id} -> ${status}`);
     }
     
     // Send FCM notifications based on status change (if FCM tokens exist)
@@ -520,16 +521,16 @@ async function sendStatusUpdateNotifications(oldOrder, newOrder, newStatus) {
             messageConfig.customerBody,
             notificationData
           );
-          console.log(`✅ Sent status update notification to customer: ${newStatus} (type: ${messageConfig.notificationType})`);
+          logger.debug(`✅ Sent status update notification to customer: ${newStatus} (type: ${messageConfig.notificationType})`);
         } else {
           if (customer) {
-            console.warn(`⚠️ Customer found but no FCM token for phone: ${newOrder.customerPhone} - User needs to login again to register FCM token`);
+            logger.warn(`⚠️ Customer found but no FCM token for phone: ${newOrder.customerPhone} - User needs to login again to register FCM token`);
           } else {
-            console.warn(`⚠️ Customer not found for phone: ${newOrder.customerPhone}`);
+            logger.warn(`⚠️ Customer not found for phone: ${newOrder.customerPhone}`);
           }
         }
       } catch (error) {
-        console.error('Error sending notification to customer:', error);
+        logger.error('Error sending notification to customer:', error);
       }
     }
     
@@ -551,7 +552,7 @@ async function sendStatusUpdateNotifications(oldOrder, newOrder, newStatus) {
             messageConfig.body,
             notificationData
           );
-          console.log(`✅ Sent status update notification to driver: ${newStatus}`);
+          logger.debug(`✅ Sent status update notification to driver: ${newStatus}`);
         } else if (newStatus === 'cancelled' && driver && driver.fcmToken) {
           // Special notification for cancelled order to driver
           const notificationData = {
@@ -566,14 +567,14 @@ async function sendStatusUpdateNotifications(oldOrder, newOrder, newStatus) {
             messageConfig.driverBody,
             notificationData
           );
-          console.log('✅ Sent cancellation notification to driver');
+          logger.debug('✅ Sent cancellation notification to driver');
         }
       } catch (error) {
-        console.error('Error sending notification to driver:', error);
+        logger.error('Error sending notification to driver:', error);
       }
     }
   } catch (error) {
-    console.error('Error in sendStatusUpdateNotifications:', error);
+    logger.error('Error in sendStatusUpdateNotifications:', error);
   }
 }
 
@@ -677,7 +678,7 @@ exports.acceptOrderByDriver = async (req, res) => {
         timestamp: new Date(),
       });
       
-      console.log(`📡 Emitted order status update via socket: ${id} -> ${newStatus}`);
+      logger.debug(`📡 Emitted order status update via socket: ${id} -> ${newStatus}`);
     }
     
     // Send FCM notification to customer that order was accepted
@@ -698,16 +699,16 @@ exports.acceptOrderByDriver = async (req, res) => {
           'تم قبول طلبك من قبل سائق',
           notificationData
         );
-        console.log('✅ Sent order accepted notification to customer');
+        logger.debug('✅ Sent order accepted notification to customer');
       } else {
         if (customer) {
-          console.warn(`⚠️ Customer found but no FCM token for phone: ${order.customerPhone} - User needs to login again to register FCM token`);
+          logger.warn(`⚠️ Customer found but no FCM token for phone: ${order.customerPhone} - User needs to login again to register FCM token`);
         } else {
-          console.warn(`⚠️ Customer not found for phone: ${order.customerPhone}`);
+          logger.warn(`⚠️ Customer not found for phone: ${order.customerPhone}`);
         }
       }
     } catch (notifError) {
-      console.error('Error sending notification to customer:', notifError);
+      logger.error('Error sending notification to customer:', notifError);
     }
     
     // Send notification to other available drivers that order was taken
@@ -732,10 +733,10 @@ exports.acceptOrderByDriver = async (req, res) => {
             type: 'order_taken',
           }
         );
-        console.log(`✅ Sent order taken notification to ${otherDriverTokens.length} other drivers`);
+        logger.debug(`✅ Sent order taken notification to ${otherDriverTokens.length} other drivers`);
       }
     } catch (notifError) {
-      console.error('Error sending notification to other drivers:', notifError);
+      logger.error('Error sending notification to other drivers:', notifError);
     }
     
     res.json(order);
@@ -767,14 +768,14 @@ exports.checkAndExpireOrders = async (io) => {
       ],
     });
     
-    console.log(`🔍 Checking for expired orders... Found ${expiredOrders.length} expired orders`);
+    logger.debug(`🔍 Checking for expired orders... Found ${expiredOrders.length} expired orders`);
     
     for (const order of expiredOrders) {
       try {
         // التحقق مرة أخرى قبل الإلغاء (لتجنب race conditions)
         const currentOrder = await Order.findById(order._id);
         if (!currentOrder || currentOrder.driverId || currentOrder.status === 'cancelled') {
-          console.log(`⏭️ Skipping order ${order._id} - already processed`);
+          logger.debug(`⏭️ Skipping order ${order._id} - already processed`);
           continue;
         }
         
@@ -783,7 +784,7 @@ exports.checkAndExpireOrders = async (io) => {
         currentOrder.updatedAt = new Date();
         await currentOrder.save();
         
-        console.log(`⏰ Order ${currentOrder._id} expired (created at ${currentOrder.createdAt}, expired at ${now})`);
+        logger.debug(`⏰ Order ${currentOrder._id} expired (created at ${currentOrder.createdAt}, expired at ${now})`);
         
         // Send notification to customer
         const customer = await findUserByPhone(currentOrder.customerPhone);
@@ -801,12 +802,12 @@ exports.checkAndExpireOrders = async (io) => {
             notificationData
           );
           
-          console.log(`✅ Sent expiration notification to customer for order ${currentOrder._id}`);
+          logger.debug(`✅ Sent expiration notification to customer for order ${currentOrder._id}`);
         } else {
           if (customer) {
-            console.warn(`⚠️ Customer found but no FCM token for phone: ${currentOrder.customerPhone} - User needs to login again to register FCM token`);
+            logger.warn(`⚠️ Customer found but no FCM token for phone: ${currentOrder.customerPhone} - User needs to login again to register FCM token`);
           } else {
-            console.warn(`⚠️ Customer not found for phone: ${currentOrder.customerPhone}`);
+            logger.warn(`⚠️ Customer not found for phone: ${currentOrder.customerPhone}`);
           }
         }
         
@@ -826,16 +827,16 @@ exports.checkAndExpireOrders = async (io) => {
             timestamp: new Date(),
           });
           
-          console.log(`📡 Emitted order expiration via socket: ${currentOrder._id}`);
+          logger.debug(`📡 Emitted order expiration via socket: ${currentOrder._id}`);
         }
       } catch (error) {
-        console.error(`❌ Error processing expired order ${order._id}:`, error);
+        logger.error(`❌ Error processing expired order ${order._id}:`, error);
       }
     }
     
     return expiredOrders.length;
   } catch (error) {
-    console.error('❌ Error checking expired orders:', error);
+    logger.error('❌ Error checking expired orders:', error);
     return 0;
   }
 };
@@ -849,7 +850,7 @@ exports.cleanupExpiredOrders = async (io) => {
     const now = new Date();
     const expirationTime = new Date(now.getTime() - ORDER_EXPIRATION_TIME);
     
-    console.log('🧹 Starting cleanup of expired orders...');
+    logger.debug('🧹 Starting cleanup of expired orders...');
     
     // Find all old expired orders that haven't been cancelled yet
     const expiredOrders = await Order.find({
@@ -861,7 +862,7 @@ exports.cleanupExpiredOrders = async (io) => {
       ],
     });
     
-    console.log(`🧹 Found ${expiredOrders.length} expired orders to cleanup`);
+    logger.debug(`🧹 Found ${expiredOrders.length} expired orders to cleanup`);
     
     let cleanedCount = 0;
     for (const order of expiredOrders) {
@@ -872,16 +873,16 @@ exports.cleanupExpiredOrders = async (io) => {
         await order.save();
         
         cleanedCount++;
-        console.log(`✅ Cleaned up expired order ${order._id} (created: ${order.createdAt})`);
+        logger.debug(`✅ Cleaned up expired order ${order._id} (created: ${order.createdAt})`);
       } catch (error) {
-        console.error(`❌ Error cleaning up order ${order._id}:`, error);
+        logger.error(`❌ Error cleaning up order ${order._id}:`, error);
       }
     }
     
-    console.log(`🧹 Cleanup completed: ${cleanedCount} orders cancelled`);
+    logger.debug(`🧹 Cleanup completed: ${cleanedCount} orders cancelled`);
     return cleanedCount;
   } catch (error) {
-    console.error('❌ Error in cleanup expired orders:', error);
+    logger.error('❌ Error in cleanup expired orders:', error);
     return 0;
   }
 };

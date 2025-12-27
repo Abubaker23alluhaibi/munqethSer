@@ -1,5 +1,6 @@
 const Supermarket = require('../models/Supermarket');
 const { calculateDistance } = require('../utils/distanceCalculator');
+const logger = require('../utils/logger');
 
 // Get all supermarkets
 exports.getAllSupermarkets = async (req, res) => {
@@ -129,13 +130,13 @@ exports.findNearestSupermarket = async (req, res) => {
       let minDistance = Infinity;
       let nearestLocation = null;
       
-      console.log(`🔍 Processing supermarket: ${supermarket.name}, locations count: ${supermarket.locations?.length || 0}`);
+      logger.debug(`🔍 Processing supermarket: ${supermarket.name}, locations count: ${supermarket.locations?.length || 0}`);
       
       // إذا كان هناك مواقع متعددة، نستخدم الأقرب
       if (supermarket.locations && supermarket.locations.length > 0) {
         for (let i = 0; i < supermarket.locations.length; i++) {
           const location = supermarket.locations[i];
-          console.log(`📍 Location ${i}:`, {
+          logger.debug(`📍 Location ${i}:`, {
             name: location.name,
             latitude: location.latitude,
             longitude: location.longitude,
@@ -147,7 +148,7 @@ exports.findNearestSupermarket = async (req, res) => {
           const locLat = location.latitude != null ? parseFloat(location.latitude) : null;
           const locLng = location.longitude != null ? parseFloat(location.longitude) : null;
           
-          console.log(`   Parsed: lat=${locLat}, lng=${locLng}, isNaN: ${isNaN(locLat) || isNaN(locLng)}`);
+          logger.debug(`   Parsed: lat=${locLat}, lng=${locLng}, isNaN: ${isNaN(locLat) || isNaN(locLng)}`);
           
           if (locLat != null && locLng != null && 
               !isNaN(locLat) && !isNaN(locLng) &&
@@ -158,16 +159,16 @@ exports.findNearestSupermarket = async (req, res) => {
               locLat,
               locLng
             );
-            console.log(`   Distance calculated: ${distance} km`);
+            logger.debug(`   Distance calculated: ${distance} km`);
             
             // التحقق من أن المسافة صحيحة وليست NaN
             if (distance != null && !isNaN(distance) && isFinite(distance) && distance < minDistance) {
               minDistance = distance;
               nearestLocation = location;
-              console.log(`   ✅ New nearest location found: ${location.name || 'unnamed'}, distance: ${distance} km`);
+              logger.debug(`   ✅ New nearest location found: ${location.name || 'unnamed'}, distance: ${distance} km`);
             }
           } else {
-            console.log(`   ❌ Invalid location coordinates`);
+            logger.debug(`   ❌ Invalid location coordinates`);
           }
         }
       } 

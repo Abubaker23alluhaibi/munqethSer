@@ -1,20 +1,21 @@
 const Product = require('../models/Product');
+const logger = require('../utils/logger');
 
 // Get all products
 exports.getAllProducts = async (req, res) => {
   try {
     const { supermarketId } = req.query;
-    console.log('Getting products with supermarketId:', supermarketId);
+    logger.debug('Getting products with supermarketId:', supermarketId);
     
     const query = supermarketId ? { supermarketId } : {};
-    console.log('Query:', JSON.stringify(query));
+    logger.debug('Query:', JSON.stringify(query));
     
     const products = await Product.find(query).sort({ createdAt: -1 });
-    console.log(`Found ${products.length} products`);
+    logger.debug(`Found ${products.length} products`);
     
     res.json(products);
   } catch (error) {
-    console.error('Error getting products:', error);
+    logger.error('Error getting products:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -43,7 +44,7 @@ exports.addProduct = async (req, res) => {
     delete productData.id;
     delete productData._id;
     
-    console.log('Creating product with data:', JSON.stringify(productData, null, 2));
+    logger.debug('Creating product with data:', JSON.stringify(productData, null, 2));
     
     if (!productData.name || !productData.price || !productData.supermarketId) {
       return res.status(400).json({ error: 'Name, price, and supermarketId are required' });
@@ -52,11 +53,11 @@ exports.addProduct = async (req, res) => {
     const product = new Product(productData);
     await product.save();
     
-    console.log('Product created successfully:', product._id, product.name);
+    logger.success('Product created successfully:', product._id, product.name);
     
     res.status(201).json(product);
   } catch (error) {
-    console.error('Error creating product:', error);
+    logger.error('Error creating product:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -71,7 +72,7 @@ exports.updateProduct = async (req, res) => {
     delete updates.id;
     delete updates._id;
     
-    console.log('Updating product', id, 'with data:', JSON.stringify(updates, null, 2));
+    logger.debug('Updating product', id, 'with data:', JSON.stringify(updates, null, 2));
     
     const product = await Product.findByIdAndUpdate(id, updates, { new: true });
     
@@ -79,11 +80,11 @@ exports.updateProduct = async (req, res) => {
       return res.status(404).json({ error: 'Product not found' });
     }
     
-    console.log('Product updated successfully:', product._id, product.name);
+    logger.success('Product updated successfully:', product._id, product.name);
     
     res.json(product);
   } catch (error) {
-    console.error('Error updating product:', error);
+    logger.error('Error updating product:', error);
     res.status(500).json({ error: error.message });
   }
 };

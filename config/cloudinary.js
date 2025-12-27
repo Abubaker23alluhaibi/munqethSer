@@ -1,4 +1,5 @@
 const cloudinary = require('cloudinary').v2;
+const logger = require('../utils/logger');
 
 // Cloudinary configuration with default values
 cloudinary.config({
@@ -7,7 +8,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET || 'zWhVYUaThJ2jUe5vIL2RFzgYVSY',
 });
 
-console.log('✅ Cloudinary configured');
+logger.success('Cloudinary configured');
 
 module.exports = cloudinary;
 
