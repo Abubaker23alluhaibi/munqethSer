@@ -16,24 +16,64 @@ function isFirebaseInitialized() {
 
 /**
  * Remove invalid FCM token from database
+ * Supports both array and string fcmToken fields (backwards compatibility)
  * @param {string} fcmToken - Invalid FCM token to remove
  */
 async function removeInvalidToken(fcmToken) {
   try {
-    // Remove token from Users
-    const userResult = await User.updateMany(
-      { fcmToken: fcmToken },
-      { $unset: { fcmToken: '' }, $set: { updatedAt: new Date() } }
-    );
+    let userModifiedCount = 0;
+    let driverModifiedCount = 0;
     
-    // Remove token from Drivers
-    const driverResult = await Driver.updateMany(
-      { fcmToken: fcmToken },
-      { $unset: { fcmToken: '' }, $set: { updatedAt: new Date() } }
-    );
+    // Remove token from Users (handle both array and string types)
+    const users = await User.find({
+      $or: [
+        { fcmToken: fcmToken }, // old string format
+        { fcmToken: { $in: [fcmToken] } } // array format
+      ]
+    });
     
-    if (userResult.modifiedCount > 0 || driverResult.modifiedCount > 0) {
-      logger.warn(`🧹 Removed invalid FCM token (${fcmToken.substring(0, 20)}...) from ${userResult.modifiedCount} user(s) and ${driverResult.modifiedCount} driver(s)`);
+    for (const user of users) {
+      // Normalize to array
+      let tokens = Array.isArray(user.fcmToken) ? user.fcmToken : (user.fcmToken ? [user.fcmToken] : []);
+      const originalLength = tokens.length;
+      
+      // Remove the invalid token
+      tokens = tokens.filter(token => token !== fcmToken);
+      
+      if (tokens.length !== originalLength) {
+        user.fcmToken = tokens.length > 0 ? tokens : [];
+        user.updatedAt = new Date();
+        await user.save();
+        userModifiedCount++;
+      }
+    }
+    
+    // Remove token from Drivers (handle both array and string types)
+    const drivers = await Driver.find({
+      $or: [
+        { fcmToken: fcmToken }, // old string format
+        { fcmToken: { $in: [fcmToken] } } // array format
+      ]
+    });
+    
+    for (const driver of drivers) {
+      // Normalize to array
+      let tokens = Array.isArray(driver.fcmToken) ? driver.fcmToken : (driver.fcmToken ? [driver.fcmToken] : []);
+      const originalLength = tokens.length;
+      
+      // Remove the invalid token
+      tokens = tokens.filter(token => token !== fcmToken);
+      
+      if (tokens.length !== originalLength) {
+        driver.fcmToken = tokens.length > 0 ? tokens : [];
+        driver.updatedAt = new Date();
+        await driver.save();
+        driverModifiedCount++;
+      }
+    }
+    
+    if (userModifiedCount > 0 || driverModifiedCount > 0) {
+      logger.warn(`🧹 Removed invalid FCM token (${fcmToken.substring(0, 20)}...) from ${userModifiedCount} user(s) and ${driverModifiedCount} driver(s)`);
       return true;
     }
     

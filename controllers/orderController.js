@@ -10,6 +10,18 @@ const logger = require('../utils/logger');
 // Order expiration time in milliseconds (5 minutes)
 const ORDER_EXPIRATION_TIME = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * Helper function to normalize fcmToken to array (handles backwards compatibility with string values)
+ * @param {string|string[]} fcmToken - FCM token(s) from database
+ * @returns {string[]} - Array of FCM tokens
+ */
+function normalizeFcmTokens(fcmToken) {
+  if (!fcmToken) return [];
+  if (Array.isArray(fcmToken)) return fcmToken.filter(token => token && token.trim().length > 0);
+  if (typeof fcmToken === 'string' && fcmToken.trim().length > 0) return [fcmToken];
+  return [];
+}
+
 // Get all orders
 exports.getOrders = async (req, res) => {
   try {
@@ -232,9 +244,9 @@ exports.createOrder = async (req, res) => {
           .slice(0, 4); // Take only the nearest 4 drivers
         
         nearestDrivers = driversWithDistance.map(item => item.driver);
+        // Flatten tokens from all drivers (support multiple tokens per driver for multiple devices)
         driverFcmTokens = driversWithDistance
-          .map(item => item.driver.fcmToken)
-          .filter(token => token && token.trim().length > 0);
+          .flatMap(item => normalizeFcmTokens(item.driver.fcmToken));
         
         logger.debug(`📍 Found ${driversWithDistance.length} nearest drivers for ${order.type} order`);
         logger.debug(`📱 Drivers with FCM tokens: ${driverFcmTokens.length}/${driversWithDistance.length}`);
@@ -272,9 +284,9 @@ exports.createOrder = async (req, res) => {
         isAvailable: true,
       });
       
+      // Flatten tokens from all drivers (support multiple tokens per driver for multiple devices)
       driverFcmTokens = availableDrivers
-        .map(d => d.fcmToken)
-        .filter(token => token && token.trim().length > 0);
+        .flatMap(d => normalizeFcmTokens(d.fcmToken));
       
       logger.debug(`📢 Found ${availableDrivers.length} available drivers for ${order.type} order`);
       logger.debug(`📱 Drivers with FCM tokens: ${driverFcmTokens.length}/${availableDrivers.length}`);
@@ -341,9 +353,11 @@ exports.createOrder = async (req, res) => {
     // Send notification to customer (order created successfully)
     try {
       const customer = await findUserByPhone(order.customerPhone);
-      if (customer && customer.fcmToken) {
-        await sendNotification(
-          customer.fcmToken,
+      const customerTokens = normalizeFcmTokens(customer?.fcmToken);
+      if (customerTokens.length > 0) {
+        // Send to all customer devices
+        await sendMulticastNotification(
+          customerTokens,
           'تم إنشاء طلبك بنجاح',
           `تم إنشاء طلبك بنجاح - رقم الطلب: ${order._id.toString().substring(0, 8)}`,
           { 
@@ -528,7 +542,8 @@ async function sendStatusUpdateNotifications(oldOrder, newOrder, newStatus) {
     if (newOrder.customerPhone) {
       try {
         const customer = await findUserByPhone(newOrder.customerPhone);
-        if (customer && customer.fcmToken) {
+        const customerTokens = normalizeFcmTokens(customer?.fcmToken);
+        if (customerTokens.length > 0) {
           // Convert all data values to strings for FCM
           const notificationData = {
             orderId: newOrder._id.toString(),
@@ -540,13 +555,14 @@ async function sendStatusUpdateNotifications(oldOrder, newOrder, newStatus) {
             notificationData.driverId = newOrder.driverId.toString();
           }
           
-          await sendNotification(
-            customer.fcmToken,
+          // Send to all customer devices
+          await sendMulticastNotification(
+            customerTokens,
             messageConfig.customerTitle,
             messageConfig.customerBody,
             notificationData
           );
-          logger.debug(`✅ Sent status update notification to customer: ${newStatus} (type: ${messageConfig.notificationType})`);
+          logger.debug(`✅ Sent status update notification to customer: ${newStatus} (type: ${messageConfig.notificationType}) - ${customerTokens.length} device(s)`);
         } else {
           if (customer) {
             logger.warn(`⚠️ Customer found but no FCM token for phone: ${newOrder.customerPhone} - User needs to login again to register FCM token`);
@@ -563,7 +579,8 @@ async function sendStatusUpdateNotifications(oldOrder, newOrder, newStatus) {
     if (newOrder.driverId) {
       try {
         const driver = await Driver.findById(newOrder.driverId);
-        if (driver && driver.fcmToken && newStatus !== 'cancelled') {
+        const driverTokens = normalizeFcmTokens(driver?.fcmToken);
+        if (driverTokens.length > 0 && newStatus !== 'cancelled') {
           // Convert all data values to strings for FCM
           const notificationData = {
             orderId: newOrder._id.toString(),
@@ -571,14 +588,15 @@ async function sendStatusUpdateNotifications(oldOrder, newOrder, newStatus) {
             status: newStatus,
           };
           
-          await sendNotification(
-            driver.fcmToken,
+          // Send to all driver devices
+          await sendMulticastNotification(
+            driverTokens,
             messageConfig.title,
             messageConfig.body,
             notificationData
           );
-          logger.debug(`✅ Sent status update notification to driver: ${newStatus}`);
-        } else if (newStatus === 'cancelled' && driver && driver.fcmToken) {
+          logger.debug(`✅ Sent status update notification to driver: ${newStatus} - ${driverTokens.length} device(s)`);
+        } else if (newStatus === 'cancelled' && driverTokens.length > 0) {
           // Special notification for cancelled order to driver
           const notificationData = {
             orderId: newOrder._id.toString(),
@@ -586,13 +604,14 @@ async function sendStatusUpdateNotifications(oldOrder, newOrder, newStatus) {
             status: newStatus,
           };
           
-          await sendNotification(
-            driver.fcmToken,
+          // Send to all driver devices
+          await sendMulticastNotification(
+            driverTokens,
             messageConfig.driverTitle,
             messageConfig.driverBody,
             notificationData
           );
-          logger.debug('✅ Sent cancellation notification to driver');
+          logger.debug(`✅ Sent cancellation notification to driver - ${driverTokens.length} device(s)`);
         }
       } catch (error) {
         logger.error('Error sending notification to driver:', error);
@@ -709,7 +728,8 @@ exports.acceptOrderByDriver = async (req, res) => {
     // Send FCM notification to customer that order was accepted
     try {
       const customer = await findUserByPhone(order.customerPhone);
-      if (customer && customer.fcmToken) {
+      const customerTokens = normalizeFcmTokens(customer?.fcmToken);
+      if (customerTokens.length > 0) {
         // Convert data values to strings for FCM
         const notificationData = {
           orderId: order._id.toString(),
@@ -718,13 +738,14 @@ exports.acceptOrderByDriver = async (req, res) => {
           driverId: driverId.toString(),
         };
         
-        await sendNotification(
-          customer.fcmToken,
+        // Send to all customer devices
+        await sendMulticastNotification(
+          customerTokens,
           'تم قبول طلبك',
           'تم قبول طلبك من قبل سائق',
           notificationData
         );
-        logger.debug('✅ Sent order accepted notification to customer');
+        logger.debug(`✅ Sent order accepted notification to customer - ${customerTokens.length} device(s)`);
       } else {
         if (customer) {
           logger.warn(`⚠️ Customer found but no FCM token for phone: ${order.customerPhone} - User needs to login again to register FCM token`);
@@ -744,9 +765,9 @@ exports.acceptOrderByDriver = async (req, res) => {
         _id: { $ne: driverId },
       });
       
+      // Flatten tokens from all drivers (support multiple tokens per driver for multiple devices)
       const otherDriverTokens = otherAvailableDrivers
-        .map(d => d.fcmToken)
-        .filter(token => token);
+        .flatMap(d => normalizeFcmTokens(d.fcmToken));
       
       if (otherDriverTokens.length > 0) {
         await sendMulticastNotification(
@@ -813,21 +834,23 @@ exports.checkAndExpireOrders = async (io) => {
         
         // Send notification to customer
         const customer = await findUserByPhone(currentOrder.customerPhone);
-        if (customer && customer.fcmToken) {
+        const customerTokens = normalizeFcmTokens(customer?.fcmToken);
+        if (customerTokens.length > 0) {
           const notificationData = {
             orderId: currentOrder._id.toString(),
             type: 'order_expired',
             status: 'cancelled',
           };
           
-          await sendNotification(
-            customer.fcmToken,
+          // Send to all customer devices
+          await sendMulticastNotification(
+            customerTokens,
             'غير متوفرين',
             'عذراً، لا يوجد سائقين متاحين حالياً. يرجى المحاولة مرة أخرى لاحقاً.',
             notificationData
           );
           
-          logger.debug(`✅ Sent expiration notification to customer for order ${currentOrder._id}`);
+          logger.debug(`✅ Sent expiration notification to customer for order ${currentOrder._id} - ${customerTokens.length} device(s)`);
         } else {
           if (customer) {
             logger.warn(`⚠️ Customer found but no FCM token for phone: ${currentOrder.customerPhone} - User needs to login again to register FCM token`);

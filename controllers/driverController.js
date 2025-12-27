@@ -660,17 +660,25 @@ exports.updateFcmToken = async (req, res) => {
       return res.status(400).json({ error: 'FCM token is required' });
     }
     
-    const driver = await Driver.findByIdAndUpdate(
-      id,
-      { fcmToken, updatedAt: new Date() },
-      { new: true }
-    );
+    const driver = await Driver.findById(id);
     
     if (!driver) {
       return res.status(404).json({ error: 'Driver not found' });
     }
     
-    logger.debug(`✅ Updated FCM token for driver ${driver.name} (${driver.driverId})`);
+    // Normalize fcmToken to array (handle old string values for backwards compatibility)
+    let tokens = Array.isArray(driver.fcmToken) ? driver.fcmToken : (driver.fcmToken ? [driver.fcmToken] : []);
+    
+    // Add new token if it doesn't exist (support multiple devices)
+    if (!tokens.includes(fcmToken)) {
+      tokens.push(fcmToken);
+      logger.success(`✅ Added FCM token for driver ${driver.name} (${driver.driverId}) - now has ${tokens.length} device(s)`);
+    }
+    
+    driver.fcmToken = tokens;
+    driver.updatedAt = new Date();
+    await driver.save();
+    
     res.json({ message: 'FCM token updated successfully', driver });
   } catch (error) {
     logger.error('Error updating driver FCM token:', error);
@@ -702,18 +710,22 @@ exports.updateFcmTokenByDriverId = async (req, res) => {
     
     logger.debug(`✅ Driver found: ${driver.name} (${driver.driverId})`);
     
-    const oldToken = driver.fcmToken;
-    driver.fcmToken = fcmToken;
-    driver.updatedAt = new Date();
-    await driver.save();
+    // Normalize fcmToken to array (handle old string values for backwards compatibility)
+    let tokens = Array.isArray(driver.fcmToken) ? driver.fcmToken : (driver.fcmToken ? [driver.fcmToken] : []);
     
-    if (oldToken !== fcmToken) {
-      logger.success(`✅ Updated FCM token for driver ${driver.name} (${driver.driverId})`);
-      logger.debug(`   Old token: ${oldToken ? oldToken.substring(0, 20) + '...' : 'none'}`);
+    // Add new token if it doesn't exist (support multiple devices)
+    const oldTokensCount = tokens.length;
+    if (!tokens.includes(fcmToken)) {
+      tokens.push(fcmToken);
+      logger.success(`✅ Added FCM token for driver ${driver.name} (${driver.driverId}) - now has ${tokens.length} device(s)`);
       logger.debug(`   New token: ${fcmToken.substring(0, 20)}...`);
     } else {
-      logger.debug(`FCM token unchanged for driver ${driver.name} (${driver.driverId})`);
+      logger.debug(`FCM token already exists for driver ${driver.name} (${driver.driverId})`);
     }
+    
+    driver.fcmToken = tokens;
+    driver.updatedAt = new Date();
+    await driver.save();
     
     res.json({ message: 'FCM token updated successfully', driver });
   } catch (error) {
@@ -734,15 +746,19 @@ exports.checkFcmTokenStatus = async (req, res) => {
       return res.status(404).json({ error: 'Driver not found' });
     }
     
-    const hasToken = !!(driver.fcmToken && driver.fcmToken.trim().length > 0);
+    // Normalize fcmToken to array (handle old string values for backwards compatibility)
+    const tokens = Array.isArray(driver.fcmToken) ? driver.fcmToken : (driver.fcmToken ? [driver.fcmToken] : []);
+    const validTokens = tokens.filter(token => token && token.trim().length > 0);
+    const hasToken = validTokens.length > 0;
     
-    logger.debug(`📱 FCM token status for ${driver.name} (${driver.driverId}): ${hasToken ? 'EXISTS' : 'MISSING'}`);
+    logger.debug(`📱 FCM token status for ${driver.name} (${driver.driverId}): ${hasToken ? `EXISTS (${validTokens.length} device(s))` : 'MISSING'}`);
     
     res.json({
       driverId: driver.driverId,
+      deviceCount: validTokens.length,
       name: driver.name,
       hasFcmToken: hasToken,
-      fcmTokenPreview: driver.fcmToken ? driver.fcmToken.substring(0, 20) + '...' : null,
+      fcmTokenPreview: validTokens.length > 0 ? validTokens[0].substring(0, 20) + '...' : null,
       updatedAt: driver.updatedAt,
     });
   } catch (error) {

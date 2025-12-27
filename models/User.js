@@ -19,7 +19,8 @@ const userSchema = new mongoose.Schema({
     type: String,
   },
   fcmToken: {
-    type: String,
+    type: [String],
+    default: [],
   },
   createdAt: {
     type: Date,

@@ -196,19 +196,22 @@ exports.updateFcmTokenByPhone = async (req, res) => {
     
     logger.debug(`✅ User found: ${user.name} (${user.phone})`);
     
-    // Update FCM token
-    const oldToken = user.fcmToken;
-    user.fcmToken = fcmToken;
-    user.updatedAt = new Date();
-    await user.save();
+    // Normalize fcmToken to array (handle old string values for backwards compatibility)
+    let tokens = Array.isArray(user.fcmToken) ? user.fcmToken : (user.fcmToken ? [user.fcmToken] : []);
     
-    if (oldToken !== fcmToken) {
-      logger.success(`✅ Updated FCM token for user ${user.name} (${user.phone})`);
-      logger.debug(`   Old token: ${oldToken ? oldToken.substring(0, 20) + '...' : 'none'}`);
+    // Add new token if it doesn't exist (support multiple devices)
+    const oldTokensCount = tokens.length;
+    if (!tokens.includes(fcmToken)) {
+      tokens.push(fcmToken);
+      logger.success(`✅ Added FCM token for user ${user.name} (${user.phone}) - now has ${tokens.length} device(s)`);
       logger.debug(`   New token: ${fcmToken.substring(0, 20)}...`);
     } else {
-      logger.debug(`FCM token unchanged for user ${user.name} (${user.phone})`);
+      logger.debug(`FCM token already exists for user ${user.name} (${user.phone})`);
     }
+    
+    user.fcmToken = tokens;
+    user.updatedAt = new Date();
+    await user.save();
     
     res.json({ message: 'FCM token updated successfully', user });
   } catch (error) {
@@ -227,17 +230,25 @@ exports.updateFcmToken = async (req, res) => {
       return res.status(400).json({ error: 'FCM token is required' });
     }
     
-    const user = await User.findByIdAndUpdate(
-      id,
-      { fcmToken, updatedAt: new Date() },
-      { new: true }
-    );
+    const user = await User.findById(id);
     
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    logger.success(`✅ Updated FCM token for user ${user.name} (${user.phone})`);
+    // Normalize fcmToken to array (handle old string values for backwards compatibility)
+    let tokens = Array.isArray(user.fcmToken) ? user.fcmToken : (user.fcmToken ? [user.fcmToken] : []);
+    
+    // Add new token if it doesn't exist (support multiple devices)
+    if (!tokens.includes(fcmToken)) {
+      tokens.push(fcmToken);
+      logger.success(`✅ Added FCM token for user ${user.name} (${user.phone}) - now has ${tokens.length} device(s)`);
+    }
+    
+    user.fcmToken = tokens;
+    user.updatedAt = new Date();
+    await user.save();
+    
     res.json({ message: 'FCM token updated successfully', user });
   } catch (error) {
     logger.error('Error updating user FCM token:', error);
@@ -257,15 +268,19 @@ exports.checkFcmTokenStatus = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    const hasToken = !!(user.fcmToken && user.fcmToken.trim().length > 0);
+    // Normalize fcmToken to array (handle old string values for backwards compatibility)
+    const tokens = Array.isArray(user.fcmToken) ? user.fcmToken : (user.fcmToken ? [user.fcmToken] : []);
+    const validTokens = tokens.filter(token => token && token.trim().length > 0);
+    const hasToken = validTokens.length > 0;
     
-    logger.debug(`📱 FCM token status for ${user.name} (${user.phone}): ${hasToken ? 'EXISTS' : 'MISSING'}`);
+    logger.debug(`📱 FCM token status for ${user.name} (${user.phone}): ${hasToken ? `EXISTS (${validTokens.length} device(s))` : 'MISSING'}`);
     
     res.json({
       phone: user.phone,
       name: user.name,
       hasFcmToken: hasToken,
-      fcmTokenPreview: user.fcmToken ? user.fcmToken.substring(0, 20) + '...' : null,
+      deviceCount: validTokens.length,
+      fcmTokenPreview: validTokens.length > 0 ? validTokens[0].substring(0, 20) + '...' : null,
       updatedAt: user.updatedAt,
     });
   } catch (error) {

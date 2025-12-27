@@ -47,7 +47,8 @@ const driverSchema = new mongoose.Schema({
     type: String,
   },
   fcmToken: {
-    type: String,
+    type: [String],
+    default: [],
   },
   lastLocationUpdate: {
     type: Date,
